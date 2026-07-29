@@ -19,7 +19,7 @@ Open http://localhost:8080
 |--------|----------|---------------|------------|
 | WhatsApp (Mac app) | ✅ | ✅ (if cached locally) | ✅ Every hour |
 | WhatsApp (iPhone export) | ✅ | ✅ (all of them) | When you add a zip |
-| Signal Desktop | ❌ (needs keychain PW) | ❌ | No |
+| Signal Desktop | ✅ (manual export) | ✅ (if cached locally) | Manual only |
 
 WhatsApp voice messages from the Mac app are limited — the app only caches audio
 files it has played locally. For a **complete backup with all voice messages**,
@@ -83,6 +83,30 @@ cd data && python3 -m http.server 8080
 ```
 
 Or just use `./run.sh` which does both.
+
+### Manual Signal Export
+
+Signal Desktop encrypts its database key in the macOS Keychain and only the
+Signal app itself can access it — so it can't be automated. To update Signal
+data manually:
+
+1. **Quit Signal** completely
+2. Open Terminal and run:
+
+```bash
+mkdir -p [redacted-local-path]/signal-backup/messages [redacted-local-path]/signal-backup/attachments
+sigtop export-messages -f text [redacted-local-path]/signal-backup/messages
+sigtop export-attachments [redacted-local-path]/signal-backup/attachments
+```
+
+3. A **keychain dialog** will appear — click **Allow** (enter your Mac password if prompted)
+4. Then rebuild the viewer:
+
+```bash
+cd [redacted-local-path] && ./run.sh
+```
+
+You only need to do this when you want a fresh snapshot of your Signal messages.
 
 ### Adding iPhone Exports
 
