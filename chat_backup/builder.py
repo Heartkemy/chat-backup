@@ -215,8 +215,13 @@ for zip_name, chat_name in ZIP_CONFIGS:
 iphone_names = {c["name"].replace(" (iPhone)", "") for c in all_convos if "(iPhone)" in c["name"]}
 all_convos = [c for c in all_convos if not (c["name"] in iphone_names and "(iPhone)" not in c["name"] and c["source"] == "WhatsApp")]
 
-# ═══════════ SORT ═══════════
-all_convos.sort(key=lambda c: (c["name"].lower(), c["source"]))
+# ═══════════ SORT by most recent message ═══════════
+def latest_ts(conv):
+    for e in reversed(conv["entries"]):
+        if e["ts"]:
+            return e["ts"]
+    return ""
+all_convos.sort(key=lambda c: latest_ts(c), reverse=True)
 
 # ═══════════ HTML ═══════════
 convos_json = json.dumps(all_convos, ensure_ascii=False)
@@ -253,16 +258,15 @@ html,body{{height:100%;background:var(--d);color:var(--l);font-family:'Outfit',u
 .cv{{padding:12px 16px;cursor:pointer;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,243,227,.04);transition:background .15s}}
 .cv:hover{{background:rgba(255,243,227,.04)}}
 .cv.a{{background:rgba(255,243,227,.06);border-left:2px solid var(--o)}}
-.bg{{font-size:9px;padding:2px 7px;border-radius:4px;font-weight:700;letter-spacing:.5px;flex-shrink:0;text-transform:uppercase}}
-.bg.s{{background:var(--p);color:#fff}}
-.bg.w{{background:linear-gradient(135deg,var(--o),var(--g));color:var(--d)}}
+.bg{{font-size:9px;padding:1px 5px;border-radius:3px;font-weight:500;letter-spacing:.3px;flex-shrink:0;color:rgba(255,243,227,.3);background:rgba(255,243,227,.06);border:1px solid rgba(255,243,227,.08)}}
 .nn{{font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;line-height:1.3}}
 .kk{{font-size:11px;color:rgba(255,243,227,.3);flex-shrink:0;font-weight:300}}
 #mn{{flex:1;display:flex;flex-direction:column;background:radial-gradient(ellipse at 50% 0%, rgba(127,0,255,.03) 0%, transparent 70%), var(--d)}}
 #pl{{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:rgba(255,243,227,.2);gap:12px;letter-spacing:.02em}}
 #pl span:first-child{{font-size:48px;font-weight:100}}
 #pl span:last-child{{font-size:13px;font-weight:300}}
-#hd{{padding:14px 20px;border-bottom:1px solid rgba(255,243,227,.06);font-size:15px;font-weight:600;display:flex;align-items:center;gap:10px;display:none;background:rgba(20,16,12,.6);backdrop-filter:blur(12px);position:relative;z-index:1}}
+#hd{{padding:14px 20px;border-bottom:1px solid rgba(255,243,227,.06);font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px;display:none;background:rgba(20,16,12,.6);backdrop-filter:blur(12px);position:relative;z-index:1}}
+#hd .src{{font-size:10px;font-weight:400;color:rgba(255,243,227,.25);letter-spacing:.02em}}
 #ms{{flex:1;overflow-y:auto;padding:20px 16px;display:none}}
 #ms::-webkit-scrollbar{{width:4px}}
 #ms::-webkit-scrollbar-thumb{{background:rgba(255,243,227,.08);border-radius:2px}}
@@ -308,12 +312,12 @@ function lb(s){{document.getElementById('lbi').src=s;document.getElementById('lb
 function fl(){{const v=document.getElementById('sr').value.toLowerCase();const el=document.getElementById('cl');el.innerHTML=''
   C.forEach(c=>{{if(v&&!c.name.toLowerCase().includes(v))return
     const d=document.createElement('div');d.className='cv'+(c.id===A?' a':'')
-    d.innerHTML='<span class=\"bg '+(c.source==='Signal'?'s':'w')+'\">'+(c.source==='Signal'?'S':'WA')+'</span><span class=\"nn\">'+es(c.name)+'</span><span class=\"kk\">'+c.entries.length+'</span>'
+    d.innerHTML='<span class=\"bg\">'+(c.source==='Signal'?'S':'WA')+'</span><span class=\"nn\">'+es(c.name)+'</span><span class=\"kk\">'+c.entries.length+'</span>'
     d.onclick=()=>op(c.id);el.appendChild(d)}})}}
 function op(id){{if(window.innerWidth<=768){{document.getElementById('sb').classList.add('c');document.getElementById('mn').classList.add('s')}}
   A=id;const c=C.find(x=>x.id===id);if(!c)return
   document.getElementById('pl').style.display='none';document.getElementById('hd').style.display='flex';document.getElementById('ms').style.display='block'
-  document.getElementById('hd').innerHTML='<span class=\"bg '+(c.source==='Signal'?'s':'w')+'\">'+(c.source==='Signal'?'Signal':'WhatsApp')+'</span> '+es(c.name)
+  document.getElementById('hd').innerHTML=es(c.name)+'<span class=\"src\">'+(c.source==='Signal'?'Signal':'WhatsApp')+'</span>'
   const el=document.getElementById('ms');el.innerHTML='';let ld=''
   c.entries.forEach(e=>{{const d=e.ts?e.ts.substring(0,10):''
     if(d&&d!==ld){{const dv=document.createElement('div');dv.className='dy';dv.textContent=d;el.appendChild(dv);ld=d}}
