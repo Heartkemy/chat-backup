@@ -295,7 +295,7 @@ html,body{{height:100%;background:var(--d);color:var(--l);font-family:'Outfit',u
 #ms::-webkit-scrollbar{{width:4px}}
 #ms::-webkit-scrollbar-thumb{{background:rgba(255,243,227,.08);border-radius:2px}}
 .w{{max-width:75%;margin-bottom:4px;padding:10px 14px;border-radius:16px;position:relative;clear:both;line-height:1.4;font-size:14px;filter:drop-shadow(0 1px 4px rgba(0,0,0,.3));word-wrap:break-word;overflow-wrap:break-word;word-break:break-word;hyphens:auto}}
-.w.o{{float:right;background:linear-gradient(135deg,rgba(255,127,0,.2),rgba(255,255,0,.08));border-bottom-right-radius:4px}}
+.w.o{{float:right;background:linear-gradient(135deg,rgba(255,127,0,.22),rgba(127,0,255,.12));border-bottom-right-radius:4px}}
 .w.i{{float:left;background:rgba(255,243,227,.06);border:1px solid rgba(255,243,227,.06);border-bottom-left-radius:4px}}
 .sn{{font-size:11px;font-weight:600;margin-bottom:1px;background:var(--gs);-webkit-background-clip:text;-webkit-text-fill-color:transparent}}
 .t{{font-size:14px;font-weight:350;word-wrap:break-word;overflow-wrap:break-word;letter-spacing:.01em}}
