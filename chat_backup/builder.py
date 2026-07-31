@@ -132,14 +132,24 @@ if os.path.exists(WA_DB):
 print(f"WhatsApp (Mac): {len([c for c in all_convos if c['source']=='WhatsApp'])} convos")
 
 # ═══════════ WHATSAPP (iPhone Export) ═══════════
+# Look for WhatsApp export zips in Downloads and iPhone-Backup folders
+ZIP_DIRS = [
+    os.path.expanduser("[redacted-local-path]"),
+    os.path.expanduser("[redacted-local-path]"),
+]
 ZIP_CONFIGS = [
     ("WhatsApp Chat - Dulcesita.zip", "Dulcesita"),
     ("WhatsApp Chat - Simon Baumann.zip", "Simon Baumann"),
 ]
 
 for zip_name, chat_name in ZIP_CONFIGS:
-    zp = os.path.join(ZIP_DIR, zip_name)
-    if not os.path.exists(zp): continue
+    zp = None
+    for zd in ZIP_DIRS:
+        candidate = os.path.join(zd, zip_name)
+        if os.path.exists(candidate):
+            zp = candidate
+            break
+    if not zp: continue
     safe = re.sub(r'[^\w ._-]', '_', chat_name)[:60]
     cid = f"wa_export_{safe}"
     mdir = os.path.join(MEDIA, "whatsapp", cid)
