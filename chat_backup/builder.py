@@ -91,10 +91,21 @@ print(f"Signal: {len([c for c in all_convos if c['source']=='Signal'])} convos")
 if os.path.exists(WA_DB):
     conn = sqlite3.connect(WA_DB)
     conn.row_factory = sqlite3.Row
-    sessions = conn.execute("SELECT Z_PK, ZPARTNERNAME FROM ZWACHATSESSION ORDER BY ZLASTMESSAGEDATE DESC").fetchall()
+    sessions = conn.execute("""
+        SELECT Z_PK, ZPARTNERNAME, ZCONTACTJID FROM ZWACHATSESSION
+        WHERE ZCONTACTJID IS NULL
+           OR (ZCONTACTJID NOT LIKE '%.status%'
+               AND ZCONTACTJID NOT LIKE '%newsletter%'
+               AND ZCONTACTJID NOT LIKE '%@broadcast%')
+        ORDER BY ZLASTMESSAGEDATE DESC
+    """).fetchall()
     for s in sessions:
         pk = s["Z_PK"]; name = s["ZPARTNERNAME"] or "Unknown"
-        cnt = conn.execute("SELECT COUNT(*) FROM ZWAMESSAGE WHERE ZCHATSESSION=?", (pk,)).fetchone()[0]
+        # Only count messages that have actual content (text or media)
+        cnt = conn.execute("""
+            SELECT COUNT(*) FROM ZWAMESSAGE m LEFT JOIN ZWAMEDIAITEM mi ON m.ZMEDIAITEM=mi.Z_PK
+            WHERE m.ZCHATSESSION=? AND (m.ZTEXT IS NOT NULL AND m.ZTEXT != '' OR mi.Z_PK IS NOT NULL)
+        """, (pk,)).fetchone()[0]
         if cnt < MIN_MSGS: continue
         safe = re.sub(r'[^\w ._-]', '_', name)[:60]
         cid = f"w_{pk}_{safe}"
@@ -125,6 +136,9 @@ if os.path.exists(WA_DB):
                     rel = os.path.join("media", "whatsapp", cid, os.path.basename(lp))
                     mime, _ = mimetypes.guess_type(lp)
                     media.append({"path": rel, "contentType": mime or ""})
+            # Skip empty messages (no text, no media) — WhatsApp status/placeholder noise
+            if not text and not media:
+                continue
             entries.append({"ts": ts_str, "sender": sender, "text": text, "media": media})
         all_convos.append({"id": cid, "name": name, "source": "WhatsApp", "entries": entries})
     conn.close()
