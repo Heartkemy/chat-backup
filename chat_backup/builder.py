@@ -64,7 +64,12 @@ if os.path.isdir(SIG_TXT):
                 if line.strip() == "" and not cur["text"]: continue
                 cur["text"] = (cur["text"] + "\n" + line) if cur["text"] else line
         if cur: entries.append(cur)
+        # Drop empty entries (no text, no media) — e.g. call/reaction placeholders
+        entries = [e for e in entries if e["text"].strip() or e["media"]]
         if len(entries) < MIN_MSGS: continue
+        # Strip phone number from conversation name, e.g. "Marianne Dotzer ([redacted-phone])"
+        clean_name = re.sub(r"\s*\(\+?[\d\s\-]+\)\s*$", "", name).strip()
+        name = clean_name or name
         safe = re.sub(r'[^\w ._-]', '_', name)[:60]
         cid = f"s_{safe}"
         att_src = os.path.join(SIG_ATT, name)
