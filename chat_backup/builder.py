@@ -9,8 +9,12 @@ from html import escape
 OUT = os.path.expanduser("[redacted-local-path]")
 # Optionally override with env var
 OUT = os.environ.get("CHAT_BACKUP_DIR", OUT)
-SIG_TXT = os.path.expanduser("[redacted-local-path]/signal-backup/messages")
-SIG_ATT = os.path.expanduser("[redacted-local-path]/signal-backup/attachments")
+# Build into a temp dir, then atomically swap so a failed run never wipes the viewer
+OUT_TMP = OUT + ".tmp"
+# Signal exports live in the project dir (Downloads is TCC-protected and gets cleaned)
+SIG_BASE = os.path.expanduser("[redacted-local-path]")
+SIG_TXT = os.path.join(SIG_BASE, "messages")
+SIG_ATT = os.path.join(SIG_BASE, "attachments")
 WA_DB = os.path.expanduser("~/Library/Group Containers/group.net.whatsapp.WhatsApp.shared/ChatStorage.sqlite")
 WA_BASE = os.path.expanduser("~/Library/Group Containers/group.net.whatsapp.WhatsApp.shared")
 ZIP_DIR = os.path.expanduser("[redacted-local-path]")
@@ -18,8 +22,8 @@ ZIP_DIR = os.path.expanduser("[redacted-local-path]")
 MIN_MSGS = 2
 APPLE_EPOCH = datetime(2001, 1, 1)
 
-shutil.rmtree(OUT, ignore_errors=True)
-MEDIA = os.path.join(OUT, "media")
+shutil.rmtree(OUT_TMP, ignore_errors=True)
+MEDIA = os.path.join(OUT_TMP, "media")
 os.makedirs(f"{MEDIA}/signal", exist_ok=True)
 os.makedirs(f"{MEDIA}/whatsapp", exist_ok=True)
 
@@ -369,8 +373,15 @@ fl()
 </body>
 </html>"""
 
-with open(os.path.join(OUT, "index.html"), "w", encoding="utf-8") as f:
+with open(os.path.join(OUT_TMP, "index.html"), "w", encoding="utf-8") as f:
     f.write(html)
+
+# Atomic swap: only replace the live viewer if the build succeeded
+shutil.rmtree(OUT + ".old", ignore_errors=True)
+if os.path.isdir(OUT):
+    os.rename(OUT, OUT + ".old")
+os.rename(OUT_TMP, OUT)
+shutil.rmtree(OUT + ".old", ignore_errors=True)
 
 # Stats
 total_msgs = sum(len(c["entries"]) for c in all_convos)
