@@ -104,6 +104,7 @@ if os.path.exists(WA_DB):
         SELECT Z_PK, ZPARTNERNAME, ZCONTACTJID FROM ZWACHATSESSION
         WHERE ZCONTACTJID IS NULL
            OR (ZCONTACTJID NOT LIKE '%.status%'
+               AND ZCONTACTJID NOT LIKE '%@status%'
                AND ZCONTACTJID NOT LIKE '%newsletter%'
                AND ZCONTACTJID NOT LIKE '%@broadcast%')
         ORDER BY ZLASTMESSAGEDATE DESC
@@ -243,10 +244,29 @@ for zip_name, chat_name in ZIP_CONFIGS:
         vm = sum(1 for e in entries if any("opus" in m["path"] for m in e["media"]))
         print(f"Added {chat_name} (iPhone): {len(entries)} msgs, {vm} voice msgs")
 
-# ═══════════ DEDUP ═══════════
-# Remove Mac WhatsApp entries that have a matching iPhone export
-iphone_names = {c["name"].replace(" (iPhone)", "") for c in all_convos if "(iPhone)" in c["name"]}
-all_convos = [c for c in all_convos if not (c["name"] in iphone_names and "(iPhone)" not in c["name"] and c["source"] == "WhatsApp")]
+# ═══════════ MERGE iPhone exports with newer Mac messages ═══════════
+# The iPhone export has the full history + all voice messages, but the Mac
+# DB has newer messages. Merge: iPhone messages first, then Mac messages
+# that are newer than the export's last message (dedup by ts+text).
+iphone_convos = [c for c in all_convos if "(iPhone)" in c["name"]]
+mac_ids_to_drop = set()
+for ic in iphone_convos:
+    base_name = ic["name"].replace(" (iPhone)", "")
+    mac_convos = [c for c in all_convos if c["source"] == "WhatsApp" and c["name"] == base_name and "(iPhone)" not in c["name"]]
+    ic["name"] = base_name
+    if not mac_convos:
+        continue
+    mc = mac_convos[0]
+    mac_ids_to_drop.add(mc["id"])
+    # Find the export's newest timestamp
+    export_ts = max((e["ts"] for e in ic["entries"] if e["ts"]), default="")
+    # Newer Mac messages = ts after export's newest
+    newer = [e for e in mc["entries"] if e["ts"] and e["ts"] > export_ts]
+    # Dedup guard against same-ts overlap
+    existing = {(e["ts"], e["sender"], e["text"]) for e in ic["entries"]}
+    newer = [e for e in newer if (e["ts"], e["sender"], e["text"]) not in existing]
+    ic["entries"].extend(newer)
+all_convos = [c for c in all_convos if c["id"] not in mac_ids_to_drop]
 
 # ═══════════ SORT by most recent message ═══════════
 def latest_ts(conv):
