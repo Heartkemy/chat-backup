@@ -11,7 +11,18 @@ Also picks up iPhone exports from WhatsApp's "Export Chat" feature.
 ./run.sh
 ```
 
-Open http://localhost:8080
+Open http://localhost:8765
+
+## How It Runs
+
+Two launchd jobs run in the background (no terminal needed):
+
+| Job | What it does |
+|-----|-------------|
+| `com.chatbackup.server` | Serves the viewer on `127.0.0.1:8765`. `KeepAlive` — auto-restarts on crash and at login. |
+| `com.chatbackup.sync` | Runs the builder every hour + at login. Opens Terminal briefly (it holds the scoped data permissions), builds, closes itself. |
+
+RAM/CPU: negligible — the server is a tiny Python process (~10MB RAM, ~0% CPU when idle). The builder runs ~30s per hour. Nothing to worry about.
 
 ## What It Backs Up
 
@@ -94,9 +105,9 @@ data manually:
 2. Open Terminal and run:
 
 ```bash
-mkdir -p [redacted-local-path]/signal-backup/messages [redacted-local-path]/signal-backup/attachments
-sigtop export-messages -f text [redacted-local-path]/signal-backup/messages
-sigtop export-attachments [redacted-local-path]/signal-backup/attachments
+mkdir -p [redacted-local-path]/messages [redacted-local-path]/attachments
+sigtop export-messages -f text [redacted-local-path]/messages
+sigtop export-attachments [redacted-local-path]/attachments
 ```
 
 3. A **keychain dialog** will appear — click **Allow** (enter your Mac password if prompted)
