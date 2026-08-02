@@ -346,15 +346,15 @@ html,body{{height:100%;background:var(--d);color:var(--l);font-family:'Outfit',u
 .md video{{max-width:100%;border-radius:10px;display:block;outline:none}}
 .md img{{max-width:100%;max-height:320px;border-radius:10px;cursor:pointer;display:block;transition:opacity .2s}}
 .md img:hover{{opacity:.85}}
-.wp{{display:flex;align-items:center;gap:8px;background:rgba(255,243,227,.05);border:1px solid rgba(255,243,227,.06);border-radius:12px;padding:7px 9px;min-width:240px;max-width:100%}}
-.wp .pp{{width:32px;height:32px;border-radius:50%;border:none;background:var(--gs);color:#221a16;font-size:13px;cursor:pointer;flex-shrink:0;font-weight:700;transition:transform .1s}}
+.wp{{display:flex;align-items:center;gap:8px;border-radius:10px;padding:2px 0;min-width:220px;max-width:100%}}
+.wp .pp{{width:30px;height:30px;border-radius:50%;border:none;background:var(--gs);color:#221a16;font-size:12px;cursor:pointer;flex-shrink:0;font-weight:700;transition:transform .1s}}
 .wp .pp:active{{transform:scale(.92)}}
-.wp .wv{{flex:1;display:flex;align-items:center;gap:2px;height:34px;min-width:80px}}
-.wp .wv i{{flex:1;background:rgba(255,243,227,.14);border-radius:2px;height:100%;transition:background .15s}}
+.wp .wv{{flex:1;display:flex;align-items:center;gap:2px;height:32px;min-width:80px;cursor:pointer}}
+.wp .wv i{{flex:1;background:rgba(255,243,227,.14);border-radius:2px;height:100%;transition:background .15s;pointer-events:none}}
 .wp .wv i.on{{background:var(--o)}}
-.wp .wd{{display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0}}
+.wp .wd{{display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0}}
 .wp .wt{{font-size:9.5px;color:rgba(255,243,227,.45);font-variant-numeric:tabular-nums}}
-.wp .sp{{font-size:10px;padding:1px 7px;border-radius:6px;border:1px solid rgba(255,243,227,.25);background:transparent;color:var(--l);cursor:pointer;font-family:'Outfit',sans-serif;line-height:1.5}}
+.wp .sp{{font-size:10px;padding:1px 6px;border-radius:6px;border:1px solid rgba(255,243,227,.25);background:transparent;color:var(--l);cursor:pointer;font-family:'Outfit',sans-serif;line-height:1.5}}
 .wp .sp:hover{{border-color:var(--o);color:var(--o)}}
 .dy{{text-align:center;clear:both;padding:10px 0 14px;color:rgba(255,243,227,.2);font-size:11px;font-weight:300;letter-spacing:.03em;text-transform:uppercase}}
 #lb{{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.95);z-index:9999;justify-content:center;align-items:center;cursor:pointer;backdrop-filter:blur(8px)}}
@@ -416,32 +416,37 @@ function op(id){{if(window.innerWidth<=768){{document.getElementById('sb').class
 const wACtx=null,wBuf=new Map()
 function getCtx(){{if(!wACtx)window.wACtx=new (window.AudioContext||window.webkitAudioContext)();return window.wACtx}}
 function initWp(wp){{const src=wp.dataset.src,btn=wp.querySelector('.pp'),bars=wp.querySelector('.wv'),tm=wp.querySelector('.wt'),sp=wp.querySelector('.sp')
-  const au=new Audio(src);au.preload='none'
-  let peaks=null,playing=false
-  const speeds=[1,1.5,2]
-  let si=0
+  const au=new Audio(src);au.preload='metadata'
+  let peaks=null,playing=false,dur=0,decoded=false
+  const speeds=[1,1.5,2];let si=0
   const fmt=s=>{{const m=Math.floor(s/60),x=Math.floor(s%60);return m+':'+String(x).padStart(2,'0')}}
-  btn.onclick=()=>{{
-    if(playing){{au.pause()}}
-    else{{
-      const ctx=getCtx();ctx.resume()
-      if(peaks===null){{if(wBuf.has(src)){{peaks=wBuf.get(src);draw()}}
-        else{{fetch(src).then(r=>r.arrayBuffer()).then(b=>ctx.decodeAudioData(b)).then(buf=>{{
-          const ch=buf.getChannelData(0),n=70,step=Math.max(1,Math.floor(ch.length/n))
-          let pk=[];for(let i=0;i<n;i++){{let s=0;for(let j=i*step;j<Math.min((i+1)*step,ch.length);j++)s+=Math.abs(ch[j]);pk.push(Math.max(0.01,s/step))}}
-          const m=Math.max(...pk);peaks=pk.map(v=>v/m);wBuf.set(src,peaks);draw()
-        }}).catch(()=>{{}})}}}}
-      au.play()}}
-  }}
-  au.ontimeupdate=()=>{{
-    tm.textContent=fmt(au.currentTime)+' / '+fmt(au.duration||0)
-    if(peaks&&au.duration){{const f=au.currentTime/au.duration;bars.querySelectorAll('i').forEach((el,i)=>el.classList.toggle('on',i/peaks.length<=f))}}
-  }}
-  au.onended=()=>{{playing=false;btn.textContent='▶';btn.style.opacity=1}}
-  au.onplay=()=>{{playing=true;btn.textContent='❚❚';btn.style.opacity=1}}
+  const drawBars=(pk)=>{{bars.innerHTML=pk.map(v=>'<i style=\"height:'+Math.max(15,Math.round(v*100))+'%\"></i>').join('')}}
+  // Show a placeholder waveform immediately so the player never looks broken
+  drawBars(Array.from({{length:60}},(_,i)=>0.2+0.5*Math.abs(Math.sin(i*0.9))+0.25*Math.random()))
+  function decode(){{if(decoded)return;decoded=true
+    const ctx=getCtx()
+    fetch(src).then(r=>r.arrayBuffer()).then(b=>ctx.decodeAudioData(b)).then(buf=>{{
+      const ch=buf.getChannelData(0),n=60,step=Math.max(1,Math.floor(ch.length/n))
+      let pk=[];for(let i=0;i<n;i++){{let s=0;for(let j=i*step;j<Math.min((i+1)*step,ch.length);j++)s+=Math.abs(ch[j]);pk.push(Math.max(0.02,s/step))}}
+      const mx=Math.max(...pk);peaks=pk.map(v=>v/mx)
+      drawBars(peaks)
+    }}).catch(()=>{{}})}}
+  function seekTo(clientX){{const r=bars.getBoundingClientRect();let f=(r.width?(clientX-r.left)/r.width:0);f=Math.max(0,Math.min(1,f))
+    if(au.duration&&isFinite(au.duration))au.currentTime=f*au.duration
+    else if(au.seekable&&au.seekable.length)au.currentTime=f*au.seekable.end(0)}}
+  let dragging=false
+  bars.addEventListener('pointerdown',e=>{{dragging=true;e.preventDefault();bars.setPointerCapture(e.pointerId);seekTo(e.clientX);if(au.paused){{getCtx().resume();decode();au.play().catch(()=>{{}})}}}})
+  bars.addEventListener('pointermove',e=>{{if(dragging)seekTo(e.clientX)}})
+  bars.addEventListener('pointerup',()=>{{dragging=false}})
+  btn.onclick=()=>{{if(playing){{au.pause()}}else{{getCtx().resume();decode();au.play()}}}}
+  au.onloadedmetadata=()=>{{dur=au.duration||0;tm.textContent='0:00 / '+fmt(dur)}}
+  au.ontimeupdate=()=>{{tm.textContent=fmt(au.currentTime)+' / '+fmt(dur||au.duration||0)
+    const nb=peaks?peaks.length:60
+    if(au.duration){{const f=au.currentTime/au.duration;bars.querySelectorAll('i').forEach((el,i)=>el.classList.toggle('on',i/nb<=f))}}}}
+  au.onended=()=>{{playing=false;btn.textContent='▶'}}
+  au.onplay=()=>{{playing=true;btn.textContent='❚❚'}}
   au.onpause=()=>{{playing=false;btn.textContent='▶'}}
   au.onerror=()=>{{btn.textContent='!'}}
-  function draw(){{bars.innerHTML=peaks.map(v=>'<i style=\"height:'+Math.max(15,v*100)+'%\"></i>').join('')}}
   sp.onclick=()=>{{si=(si+1)%speeds.length;au.playbackRate=speeds[si];sp.textContent=speeds[si]+'×'}}
 }}
 fl()
