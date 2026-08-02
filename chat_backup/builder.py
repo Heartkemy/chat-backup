@@ -56,10 +56,18 @@ if os.path.isdir(SIG_TXT):
         for line in content.split("\n"):
             if line.startswith("From: "):
                 if cur: entries.append(cur)
-                cur = {"sender": line[6:].strip(), "ts": "", "text": "", "media": []}
+                cur = {"sender": line[6:].strip(), "ts": "", "text": "", "media": [], "reactions": []}
             elif line.startswith("Sent: ") and cur:
                 dt = parse_ts(line[6:])
                 if dt: cur["ts"] = dt.strftime("%Y-%m-%d %H:%M:%S")
+            elif line.startswith("Reaction: ") and cur:
+                m = re.match(r"(.+?) from (.+)$", line[10:])
+                if m:
+                    emoji, reactor = m.group(1).strip(), m.group(2).strip()
+                    reactor = re.sub(r"\s*\(\+?[\d\s\-]+\)\s*$", "", reactor)
+                    if reactor == "Rafael Horvat": reactor = "You"
+                    if not any(r["emoji"] == emoji and r["from"] == reactor for r in cur["reactions"]):
+                        cur["reactions"].append({"emoji": emoji, "from": reactor})
             elif line.startswith("Attachment: ") and cur:
                 m = re.match(r"Attachment: (.+?) \((\S+),", line[12:])
                 if m:
@@ -323,19 +331,31 @@ html,body{{height:100%;background:var(--d);color:var(--l);font-family:'Outfit',u
 #ms{{flex:1;overflow-y:auto;padding:20px 16px;display:none}}
 #ms::-webkit-scrollbar{{width:4px}}
 #ms::-webkit-scrollbar-thumb{{background:rgba(255,243,227,.08);border-radius:2px}}
-.w{{max-width:75%;margin-bottom:4px;padding:10px 14px;border-radius:16px;position:relative;clear:both;line-height:1.4;font-size:14px;filter:drop-shadow(0 1px 4px rgba(0,0,0,.3));word-wrap:break-word;overflow-wrap:break-word;word-break:break-word;hyphens:auto}}
+.w{{max-width:72%;margin-bottom:3px;padding:6px 10px;border-radius:14px;position:relative;clear:both;line-height:1.35;font-size:14px;filter:drop-shadow(0 1px 3px rgba(0,0,0,.3));word-wrap:break-word;overflow-wrap:break-word;word-break:break-word;hyphens:auto}}
 .w.o{{float:right;background:linear-gradient(135deg,rgba(255,127,0,.22),rgba(127,0,255,.12));border-bottom-right-radius:4px}}
 .w.i{{float:left;background:rgba(255,243,227,.06);border:1px solid rgba(255,243,227,.06);border-bottom-left-radius:4px}}
-.sn{{font-size:11px;font-weight:600;margin-bottom:1px;background:var(--gs);-webkit-background-clip:text;-webkit-text-fill-color:transparent}}
-.t{{font-size:14px;font-weight:350;word-wrap:break-word;overflow-wrap:break-word;letter-spacing:.01em}}
+.mi{{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:8px;row-gap:1px}}
+.t{{font-size:14px;font-weight:350;word-wrap:break-word;overflow-wrap:break-word;letter-spacing:.01em;flex:1 1 auto;min-width:0}}
 .t a{{color:var(--o);text-decoration:none;border-bottom:1px solid rgba(255,127,0,.3)}}
 .t a:hover{{border-color:var(--o)}}
-.ts{{font-size:10px;color:rgba(255,243,227,.25);text-align:right;margin-top:2px;font-weight:300;letter-spacing:.02em}}
-.md{{margin-top:6px}}
-.md audio,.md video{{max-width:100%;border-radius:12px;display:block;outline:none}}
-.md audio::-webkit-media-controls-panel{{background:rgba(255,243,227,.08)}}
-.md img{{max-width:100%;max-height:320px;border-radius:12px;cursor:pointer;display:block;transition:opacity .2s}}
+.ts{{font-size:9.5px;color:rgba(255,243,227,.3);font-weight:300;letter-spacing:.02em;margin-left:auto;flex:0 0 auto;align-self:flex-end}}
+.rx{{display:flex;flex-wrap:wrap;gap:3px;margin-top:3px;clear:both}}
+.rc{{background:rgba(255,243,227,.08);border:1px solid rgba(255,243,227,.1);border-radius:10px;padding:0 7px;font-size:12px;display:inline-flex;align-items:center;gap:4px;line-height:1.5}}
+.rc .rn{{font-size:9.5px;color:rgba(255,243,227,.35)}}
+.md{{margin-top:4px}}
+.md video{{max-width:100%;border-radius:10px;display:block;outline:none}}
+.md img{{max-width:100%;max-height:320px;border-radius:10px;cursor:pointer;display:block;transition:opacity .2s}}
 .md img:hover{{opacity:.85}}
+.wp{{display:flex;align-items:center;gap:8px;background:rgba(255,243,227,.05);border:1px solid rgba(255,243,227,.06);border-radius:12px;padding:7px 9px;min-width:240px;max-width:100%}}
+.wp .pp{{width:32px;height:32px;border-radius:50%;border:none;background:var(--gs);color:#221a16;font-size:13px;cursor:pointer;flex-shrink:0;font-weight:700;transition:transform .1s}}
+.wp .pp:active{{transform:scale(.92)}}
+.wp .wv{{flex:1;display:flex;align-items:center;gap:2px;height:34px;min-width:80px}}
+.wp .wv i{{flex:1;background:rgba(255,243,227,.14);border-radius:2px;height:100%;transition:background .15s}}
+.wp .wv i.on{{background:var(--o)}}
+.wp .wd{{display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0}}
+.wp .wt{{font-size:9.5px;color:rgba(255,243,227,.45);font-variant-numeric:tabular-nums}}
+.wp .sp{{font-size:10px;padding:1px 7px;border-radius:6px;border:1px solid rgba(255,243,227,.25);background:transparent;color:var(--l);cursor:pointer;font-family:'Outfit',sans-serif;line-height:1.5}}
+.wp .sp:hover{{border-color:var(--o);color:var(--o)}}
 .dy{{text-align:center;clear:both;padding:10px 0 14px;color:rgba(255,243,227,.2);font-size:11px;font-weight:300;letter-spacing:.03em;text-transform:uppercase}}
 #lb{{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.95);z-index:9999;justify-content:center;align-items:center;cursor:pointer;backdrop-filter:blur(8px)}}
 #lb img{{max-width:90%;max-height:90%;border-radius:12px;box-shadow:0 20px 80px rgba(0,0,0,.8)}}
@@ -375,19 +395,55 @@ function op(id){{if(window.innerWidth<=768){{document.getElementById('sb').class
   c.entries.forEach(e=>{{const d=e.ts?e.ts.substring(0,10):''
     if(d&&d!==ld){{const dv=document.createElement('div');dv.className='dy';dv.textContent=d;el.appendChild(dv);ld=d}}
     const dv=document.createElement('div');dv.className='w '+(e.sender==='You'?'o':'i')
-    let h='';if(e.sender!=='You')h+='<div class=\"sn\">'+es(e.sender)+'</div>'
-    if(e.text)h+='<div class=\"t\">'+lk(es(e.text))+'</div>'
+    let h=''
+    const tsep=e.ts?e.ts.substring(11,16):''
+    if(e.text)h+='<div class=\"mi\"><span class=\"t\">'+lk(es(e.text))+'</span>'+(tsep?'<span class=\"ts\">'+tsep+'</span>':'')+'</div>'
     e.media.forEach(m=>{{const p=m.path;if(!p)return
       if((m.contentType||'').startsWith('audio/')||p.match(/\\.(aac|m4a|opus|mp3|wav|ogg|flac)$/i))
-        h+='<div class=\"md\"><audio controls src=\"'+p+'\"></audio></div>'
+        h+='<div class=\"md\"><div class=\"wp\" data-src=\"'+p+'\"><button class=\"pp\">▶</button><div class=\"wv\"></div><div class=\"wd\"><span class=\"wt\">0:00</span><button class=\"sp\">1×</button></div></div></div>'
       else if((m.contentType||'').startsWith('video/')||p.match(/\\.(mp4|mov|webm)$/i))
         h+='<div class=\"md\"><video controls src=\"'+p+'\"></video></div>'
       else if((m.contentType||'').startsWith('image/')||p.match(/\\.(jpg|jpeg|png|gif|webp|svg)$/i))
         h+='<div class=\"md\"><img src=\"'+p+'\" onclick=\"event.stopPropagation();lb(this.src)\"></div>'
       else h+='<div class=\"md\"><a href=\"'+p+'\" download style=\"color:var(--o);font-size:13px\">'+es(p.split('/').pop())+'</a></div>'}})
-    if(e.ts)h+='<div class=\"ts\">'+e.ts.substring(11,16)+'</div>'
-    dv.innerHTML=h;el.appendChild(dv)}})
+    if(!e.text&&tsep)h+='<div class=\"mi\"><span class=\"ts\">'+tsep+'</span></div>'
+    if(e.reactions&&e.reactions.length){{h+='<div class=\"rx\">'
+      e.reactions.forEach(r=>{{h+='<span class=\"rc\">'+es(r.emoji)+(r.from&&r.from!=='You'?'<span class=\"rn\">'+es(r.from.split(' ')[0])+'</span>':'')+'</span>'}})
+      h+='</div>'}}
+    dv.innerHTML=h;el.appendChild(dv)
+    dv.querySelectorAll('.wp').forEach(initWp)}})
   fl();el.scrollTop=el.scrollHeight}}
+const wACtx=null,wBuf=new Map()
+function getCtx(){{if(!wACtx)window.wACtx=new (window.AudioContext||window.webkitAudioContext)();return window.wACtx}}
+function initWp(wp){{const src=wp.dataset.src,btn=wp.querySelector('.pp'),bars=wp.querySelector('.wv'),tm=wp.querySelector('.wt'),sp=wp.querySelector('.sp')
+  const au=new Audio(src);au.preload='none'
+  let peaks=null,playing=false
+  const speeds=[1,1.5,2]
+  let si=0
+  const fmt=s=>{{const m=Math.floor(s/60),x=Math.floor(s%60);return m+':'+String(x).padStart(2,'0')}}
+  btn.onclick=()=>{{
+    if(playing){{au.pause()}}
+    else{{
+      const ctx=getCtx();ctx.resume()
+      if(peaks===null){{if(wBuf.has(src)){{peaks=wBuf.get(src);draw()}}
+        else{{fetch(src).then(r=>r.arrayBuffer()).then(b=>ctx.decodeAudioData(b)).then(buf=>{{
+          const ch=buf.getChannelData(0),n=70,step=Math.max(1,Math.floor(ch.length/n))
+          let pk=[];for(let i=0;i<n;i++){{let s=0;for(let j=i*step;j<Math.min((i+1)*step,ch.length);j++)s+=Math.abs(ch[j]);pk.push(Math.max(0.01,s/step))}}
+          const m=Math.max(...pk);peaks=pk.map(v=>v/m);wBuf.set(src,peaks);draw()
+        }}).catch(()=>{{}})}}}}
+      au.play()}}
+  }}
+  au.ontimeupdate=()=>{{
+    tm.textContent=fmt(au.currentTime)+' / '+fmt(au.duration||0)
+    if(peaks&&au.duration){{const f=au.currentTime/au.duration;bars.querySelectorAll('i').forEach((el,i)=>el.classList.toggle('on',i/peaks.length<=f))}}
+  }}
+  au.onended=()=>{{playing=false;btn.textContent='▶';btn.style.opacity=1}}
+  au.onplay=()=>{{playing=true;btn.textContent='❚❚';btn.style.opacity=1}}
+  au.onpause=()=>{{playing=false;btn.textContent='▶'}}
+  au.onerror=()=>{{btn.textContent='!'}}
+  function draw(){{bars.innerHTML=peaks.map(v=>'<i style=\"height:'+Math.max(15,v*100)+'%\"></i>').join('')}}
+  sp.onclick=()=>{{si=(si+1)%speeds.length;au.playbackRate=speeds[si];sp.textContent=speeds[si]+'×'}}
+}}
 fl()
 </script>
 </body>
