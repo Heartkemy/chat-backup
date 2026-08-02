@@ -1,5 +1,6 @@
 data/
 signal-export/
+ChatBackupSync.app/
 *.pyc
 __pycache__/
 .DS_Store

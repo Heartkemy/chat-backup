@@ -416,7 +416,7 @@ function op(id){{if(window.innerWidth<=768){{document.getElementById('sb').class
 const wACtx=null,wBuf=new Map()
 function getCtx(){{if(!wACtx)window.wACtx=new (window.AudioContext||window.webkitAudioContext)();return window.wACtx}}
 function initWp(wp){{const src=wp.dataset.src,btn=wp.querySelector('.pp'),bars=wp.querySelector('.wv'),tm=wp.querySelector('.wt'),sp=wp.querySelector('.sp')
-  const au=new Audio(src);au.preload='metadata'
+  const au=new Audio(src);au.preload='auto'
   let peaks=null,playing=false,dur=0,decoded=false
   const speeds=[1,1.5,2];let si=0
   const fmt=s=>{{const m=Math.floor(s/60),x=Math.floor(s%60);return m+':'+String(x).padStart(2,'0')}}
@@ -430,7 +430,13 @@ function initWp(wp){{const src=wp.dataset.src,btn=wp.querySelector('.pp'),bars=w
       let pk=[];for(let i=0;i<n;i++){{let s=0;for(let j=i*step;j<Math.min((i+1)*step,ch.length);j++)s+=Math.abs(ch[j]);pk.push(Math.max(0.02,s/step))}}
       const mx=Math.max(...pk);peaks=pk.map(v=>v/mx)
       drawBars(peaks)
+      dur=buf.duration||0;tm.textContent='0:00 / '+fmt(dur)
     }}).catch(()=>{{}})}}
+  // Decode as soon as the player scrolls into view, so durations show without clicking
+  if('IntersectionObserver' in window){{
+    const io=new IntersectionObserver(es=>{{es.forEach(x=>{{if(x.isIntersecting){{io.disconnect();decode()}}}})}})
+    io.observe(bars)
+  }}
   function seekTo(clientX){{const r=bars.getBoundingClientRect();let f=(r.width?(clientX-r.left)/r.width:0);f=Math.max(0,Math.min(1,f))
     if(au.duration&&isFinite(au.duration))au.currentTime=f*au.duration
     else if(au.seekable&&au.seekable.length)au.currentTime=f*au.seekable.end(0)}}
