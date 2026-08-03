@@ -442,7 +442,7 @@ function op(id){{if(window.innerWidth<=768){{document.getElementById('sb').class
   document.getElementById('pl').style.display='none';document.getElementById('hd').style.display='flex';document.getElementById('ms').style.display='block'
   document.getElementById('hd').innerHTML=es(c.name)+'<span class="src">'+(c.source==='Signal'?'Signal':'WhatsApp')+'</span>'
   const el=document.getElementById('ms')
-  fillTok++;hintEl=null
+  msEl=el;fillTok++;hintEl=null
   buildRows(c)
   el.innerHTML=''
   const n=rows.length
@@ -452,6 +452,12 @@ function op(id){{if(window.innerWidth<=768){{document.getElementById('sb').class
   hintEl=document.createElement('div');hintEl.className='ldh';hintEl.textContent='Loading older messages…'
   el.insertBefore(hintEl,el.firstChild)
   el.scrollTop=el.scrollHeight
+  // When lazy images load they grow the page — snap back to bottom if the
+  // user is still at (or near) the bottom
+  if(!el.__vInit){{el.__vInit=1
+    el.addEventListener('load',e=>{{if(e.target&&e.target.tagName==='IMG'&&msEl){{
+      const t=msEl.scrollTop,sh=msEl.scrollHeight,ch=msEl.clientHeight
+      if(sh-t-ch<160)msEl.scrollTop=msEl.scrollHeight}}}},true)}}
   const tok=fillTok
   setTimeout(()=>fillOlder(n-20,tok),30)
   fl()}}
