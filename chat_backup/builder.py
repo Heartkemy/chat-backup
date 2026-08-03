@@ -357,9 +357,11 @@ html,body{{height:100%;background:var(--d);color:var(--l);font-family:'Outfit',u
 .wp .sp{{font-size:10px;padding:1px 6px;border-radius:6px;border:1px solid rgba(255,243,227,.25);background:transparent;color:var(--l);cursor:pointer;font-family:'Outfit',sans-serif;line-height:1.5}}
 .wp .sp:hover{{border-color:var(--o);color:var(--o)}}
 .dy{{text-align:center;clear:both;padding:10px 0 14px;color:rgba(255,243,227,.2);font-size:11px;font-weight:300;letter-spacing:.03em;text-transform:uppercase}}
+.ldh{{text-align:center;padding:10px 0;color:rgba(255,243,227,.3);font-size:12px;font-weight:300;clear:both;animation:pulse 1.2s ease-in-out infinite}}
 #lb{{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.95);z-index:9999;justify-content:center;align-items:center;cursor:pointer;backdrop-filter:blur(8px)}}
 #lb img{{max-width:90%;max-height:90%;border-radius:12px;box-shadow:0 20px 80px rgba(0,0,0,.8)}}
 @media(max-width:768px){{#sb{{width:100%;min-width:100%;z-index:10}} #sb.c{{display:none}} #mn{{display:none}} #mn.s{{display:flex}}}}
+@keyframes pulse{{0%,100%{{opacity:.35}}50%{{opacity:.9}}}}
 </style>
 </head>
 <body>
@@ -380,133 +382,120 @@ const D={json.dumps(convos_json)};
 const C=JSON.parse(D);
 let A=null;
 function es(s){{const d=document.createElement('div');d.textContent=s;return d.innerHTML}}
-function lk(s){{return s.replace(/(https?:\\/\\/[^\\s]+)/g,'<a href=\"$1\" target=\"_blank\">$1</a>')}}
+function lk(s){{return s.replace(/(https?:\/\/[^\s]+)/g,'<a href="$1" target="_blank">$1</a>')}}
 function lb(s){{document.getElementById('lbi').src=s;document.getElementById('lb').style.display='flex'}}
 function fl(){{const v=document.getElementById('sr').value.toLowerCase();const el=document.getElementById('cl');el.innerHTML=''
   C.forEach(c=>{{if(v&&!c.name.toLowerCase().includes(v))return
     const d=document.createElement('div');d.className='cv'+(c.id===A?' a':'')
-    d.innerHTML='<span class=\"bg\">'+(c.source==='Signal'?'S':'WA')+'</span><span class=\"nn\">'+es(c.name)+'</span><span class=\"kk\">'+c.entries.length+'</span>'
+    d.innerHTML='<span class="bg">'+(c.source==='Signal'?'S':'WA')+'</span><span class="nn">'+es(c.name)+'</span><span class="kk">'+c.entries.length+'</span>'
     d.onclick=()=>op(c.id);el.appendChild(d)}})}}
-let rows=[],heights=[],offsets=[],msEl=null,raf=0,lastWin='',estimates=[30,46]
-function calcOff(){{offsets=new Array(rows.length+1);let a=0
-  for(let i=0;i<rows.length;i++){{offsets[i]=a;a+=heights[i]}}
-  offsets[rows.length]=a;return a}}
+
+// ---- Simple progressive rendering ----
+// On open: render the most recent 20 messages instantly, scroll to bottom.
+// Then fill the rest of the conversation in the background, 150 messages
+// per batch, prepending above. Native scrolling, no virtualization.
+let rows=[],msEl=null,hintEl=null,fillTok=0
+const BATCH=150
+
 function msgHtml(e){{let h=''
   const tsep=e.ts?e.ts.substring(11,16):''
-  if(e.text)h+='<div class=\"mi\"><span class=\"t\">'+lk(es(e.text))+'</span>'+(tsep?'<span class=\"ts\">'+tsep+'</span>':'')+'</div>'
+  if(e.text)h+='<div class="mi"><span class="t">'+lk(es(e.text))+'</span>'+(tsep?'<span class="ts">'+tsep+'</span>':'')+'</div>'
   e.media.forEach(m=>{{const p=m.path;if(!p)return
-    if((m.contentType||'').startsWith('audio/')||p.match(/\\.(aac|m4a|opus|mp3|wav|ogg|flac)$/i))
-      h+='<div class=\"md\"><div class=\"wp\" data-src=\"'+p+'\"><button class=\"pp\">▶</button><div class=\"wv\"></div><div class=\"wd\"><span class=\"wt\">0:00</span><button class=\"sp\">1×</button></div></div></div>'
-    else if((m.contentType||'').startsWith('video/')||p.match(/\\.(mp4|mov|webm)$/i))
-      h+='<div class=\"md\"><video controls src=\"'+p+'\"></video></div>'
-    else if((m.contentType||'').startsWith('image/')||p.match(/\\.(jpg|jpeg|png|gif|webp|svg)$/i))
-      h+='<div class=\"md\"><img src=\"'+p+'\" onclick=\"event.stopPropagation();lb(this.src)\"></div>'
-    else h+='<div class=\"md\"><a href=\"'+p+'\" download style=\"color:var(--o);font-size:13px\">'+es(p.split('/').pop())+'</a></div>'}})
-  if(!e.text&&tsep)h+='<div class=\"mi\"><span class=\"ts\">'+tsep+'</span></div>'
-  if(e.reactions&&e.reactions.length){{h+='<div class=\"rx\">'
-    e.reactions.forEach(r=>{{h+='<span class=\"rc\">'+es(r.emoji)+(r.from&&r.from!=='You'?'<span class=\"rn\">'+es(r.from.split(' ')[0])+'</span>':'')+'</span>'}})
+    if((m.contentType||'').startsWith('audio/')||p.match(/\.(aac|m4a|opus|mp3|wav|ogg|flac)$/i))
+      h+='<div class="md"><div class="wp" data-src="'+p+'"><button class="pp">▶</button><div class="wv"></div><div class="wd"><span class="wt">0:00</span><button class="sp">1×</button></div></div></div>'
+    else if((m.contentType||'').startsWith('video/')||p.match(/\.(mp4|mov|webm)$/i))
+      h+='<div class="md"><video controls preload="none" src="'+p+'"></video></div>'
+    else if((m.contentType||'').startsWith('image/')||p.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i))
+      h+='<div class="md"><img loading="lazy" src="'+p+'" onclick="event.stopPropagation();lb(this.src)"></div>'
+    else h+='<div class="md"><a href="'+p+'" download style="color:var(--o);font-size:13px">'+es(p.split('/').pop())+'</a></div>'}})
+  if(!e.text&&tsep)h+='<div class="mi"><span class="ts">'+tsep+'</span></div>'
+  if(e.reactions&&e.reactions.length){{h+='<div class="rx">'
+    e.reactions.forEach(r=>{{h+='<span class="rc">'+es(r.emoji)+(r.from&&r.from!=='You'?'<span class="rn">'+es(r.from.split(' ')[0])+'</span>':'')+'</span>'}})
     h+='</div>'}}
   return h}}
-function onScroll(){{if(raf)return;raf=requestAnimationFrame(()=>{{raf=0;renderWin()}})}}
-function renderWin(forceIdx){{if(!msEl)return
-  const el=msEl,top=el.scrollTop,ch=el.clientHeight
-  // Anchor: first rendered row that reaches below the viewport top
-  let anchor=null
-  if(typeof forceIdx!=='number'){{const msRect=el.getBoundingClientRect()
-    for(const chd of el.children){{if(!chd.dataset.i)continue
-      const cr=chd.getBoundingClientRect()
-      if(cr.bottom>msRect.top){{anchor={{idx:+chd.dataset.i,delta:msRect.top-cr.top}};break}}}}}}
-  // Target index: anchor, or binary search on offsets
-  let idx=0
-  if(typeof forceIdx==='number')idx=forceIdx
-  else if(anchor)idx=anchor.idx
-  else if(top>0&&offsets.length){{let lo=0,hi=rows.length-1
-    while(lo<hi){{const mid=(lo+hi)>>1
-      if(offsets[mid+1]>top)hi=mid;else lo=mid+1}}
-    idx=lo}}
-  idx=Math.max(0,Math.min(rows.length-1,idx))
-  const vis=Math.max(5,Math.ceil(ch/46)),buf=Math.max(8,Math.ceil(vis*1.5))
-  const start=Math.max(0,idx-buf),end=Math.min(rows.length-1,idx+vis+buf)
-  const key=start+'_'+end
-  if(key===lastWin)return
-  lastWin=key
+function buildRows(c){{rows=[];let ld=''
+  c.entries.forEach(e=>{{const d=e.ts?e.ts.substring(0,10):''
+    if(d&&d!==ld){{rows.push({{t:'day',l:d}});ld=d}}
+    rows.push({{t:'msg',e:e}})}})}}
+function mkRow(i){{const r=rows[i]
+  let dv
+  if(r.t==='day'){{dv=document.createElement('div');dv.className='dy';dv.textContent=r.l}}
+  else{{dv=document.createElement('div');dv.className='w '+(r.e.sender==='You'?'o':'i');dv.innerHTML=msgHtml(r.e);dv.querySelectorAll('.wp').forEach(initWp)}}
+  return dv}}
+function appendRange(s,e,container){{const frag=document.createDocumentFragment()
+  for(let i=s;i<=e;i++)frag.appendChild(mkRow(i))
+  container.appendChild(frag)}}
+function fillOlder(next,tok){{if(tok!==fillTok)return
+  const el=msEl
+  if(next<=0){{if(hintEl){{hintEl.remove();hintEl=null}}return}}
+  const s=Math.max(0,next-BATCH)
+  const prevH=el.scrollHeight
   const frag=document.createDocumentFragment()
-  for(let i=start;i<=end;i++){{const r=rows[i]
-    let dv
-    if(r.t==='day'){{dv=document.createElement('div');dv.className='dy';dv.textContent=r.l}}
-    else{{dv=document.createElement('div');dv.className='w '+(r.e.sender==='You'?'o':'i');dv.innerHTML=msgHtml(r.e)}}
-    dv.dataset.i=i;frag.appendChild(dv)}}
-  el.innerHTML=''
-  el.style.paddingTop=offsets[start]+'px'
-  el.style.paddingBottom=(offsets[rows.length]-offsets[end+1])+'px'
-  el.appendChild(frag)
-  el.querySelectorAll('[data-i]').forEach(dv=>{{const i=+dv.dataset.i;const h=dv.offsetHeight||heights[i];if(h)heights[i]=h}})
-  calcOff()
-  el.querySelectorAll('.wp').forEach(initWp)
-  // Restore scroll so the anchor row stays visually put
-  if(anchor&&typeof forceIdx!=='number'){{el.scrollTop=offsets[anchor.idx]+anchor.delta
-    if(anchor.idx>=rows.length-2)el.scrollTop=el.scrollHeight}}}}
+  for(let i=s;i<next;i++)frag.appendChild(mkRow(i))
+  if(hintEl&&hintEl.nextSibling)el.insertBefore(frag,hintEl.nextSibling);else el.insertBefore(frag,el.firstChild)
+  // keep the user's viewport in place while content is added above
+  el.scrollTop+=el.scrollHeight-prevH
+  if(s<=0){{if(hintEl){{hintEl.remove();hintEl=null}}}}
+  else setTimeout(()=>fillOlder(s,tok),0)}}
 function op(id){{if(window.innerWidth<=768){{document.getElementById('sb').classList.add('c');document.getElementById('mn').classList.add('s')}}
   A=id;const c=C.find(x=>x.id===id);if(!c)return
   document.getElementById('pl').style.display='none';document.getElementById('hd').style.display='flex';document.getElementById('ms').style.display='block'
-  document.getElementById('hd').innerHTML=es(c.name)+'<span class=\"src\">'+(c.source==='Signal'?'Signal':'WhatsApp')+'</span>'
+  document.getElementById('hd').innerHTML=es(c.name)+'<span class="src">'+(c.source==='Signal'?'Signal':'WhatsApp')+'</span>'
   const el=document.getElementById('ms')
-  rows=[];let ld=''
-  c.entries.forEach(e=>{{const d=e.ts?e.ts.substring(0,10):''
-    if(d&&d!==ld){{rows.push({{t:'day',l:d}});ld=d}}
-    rows.push({{t:'msg',e:e}})}})
-  heights=rows.map(r=>r.t==='day'?estimates[0]:estimates[1])
-  lastWin='';msEl=el;calcOff()
-  if(!el.__vInit){{el.__vInit=1
-    el.addEventListener('scroll',onScroll,{{passive:true}})
-    el.addEventListener('load',e=>{{if(e.target&&e.target.tagName==='IMG'){{lastWin='';onScroll()}}}},true)
-    window.addEventListener('resize',()=>{{lastWin='';onScroll()}})}}
-  // Render the bottom window FIRST so its height is real, then jump to bottom
-  renderWin(rows.length-1)
+  fillTok++;hintEl=null
+  buildRows(c)
+  el.innerHTML=''
+  const n=rows.length
+  if(n<=20){{appendRange(0,n-1,el);el.scrollTop=el.scrollHeight;fl();return}}
+  // render only the most recent 20 first
+  appendRange(n-20,n-1,el)
+  hintEl=document.createElement('div');hintEl.className='ldh';hintEl.textContent='Loading older messages…'
+  el.insertBefore(hintEl,el.firstChild)
   el.scrollTop=el.scrollHeight
+  const tok=fillTok
+  setTimeout(()=>fillOlder(n-20,tok),30)
   fl()}}
-const wACtx=null,wBuf=new Map()
+
+// ---- Waveform player ----
+const wACtx=null
 function getCtx(){{if(!wACtx)window.wACtx=new (window.AudioContext||window.webkitAudioContext)();return window.wACtx}}
+const fmt=s=>{{const m=Math.floor(s/60),x=Math.floor(s%60);return m+':'+String(x).padStart(2,'0')}}
+// One shared observer decodes waveforms only when they scroll into view
+const wpObs=new IntersectionObserver(es=>{{es.forEach(x=>{{if(x.isIntersecting){{wpObs.unobserve(x.target);decodeWp(x.target)}}}})}},{{rootMargin:'400px'}})
+function decodeWp(wp){{if(wp._decoded)return;wp._decoded=true
+  const src=wp.dataset.src,ctx=getCtx()
+  fetch(src).then(r=>r.arrayBuffer()).then(b=>ctx.decodeAudioData(b)).then(buf=>{{
+    const ch=buf.getChannelData(0),n=60,step=Math.max(1,Math.floor(ch.length/n))
+    let pk=[];for(let i=0;i<n;i++){{let s=0;for(let j=i*step;j<Math.min((i+1)*step,ch.length);j++)s+=Math.abs(ch[j]);pk.push(Math.max(0.02,s/step))}}
+    const mx=Math.max(...pk);wp._peaks=pk.map(v=>v/mx)
+    const bars=wp.querySelector('.wv'),tm=wp.querySelector('.wt')
+    if(bars)bars.innerHTML=wp._peaks.map(v=>'<i style="height:'+Math.max(15,Math.round(v*100))+'%"></i>').join('')
+    if(tm)tm.textContent='0:00 / '+fmt(buf.duration||0)
+  }}).catch(()=>{{}})}}
 function initWp(wp){{const src=wp.dataset.src,btn=wp.querySelector('.pp'),bars=wp.querySelector('.wv'),tm=wp.querySelector('.wt'),sp=wp.querySelector('.sp')
-  const au=new Audio(src);au.preload='auto'
-  let peaks=null,playing=false,dur=0,decoded=false
+  const au=new Audio(src);au.preload='none'
+  let playing=false,dur=0
   const speeds=[1,1.5,2];let si=0
-  const fmt=s=>{{const m=Math.floor(s/60),x=Math.floor(s%60);return m+':'+String(x).padStart(2,'0')}}
-  const drawBars=(pk)=>{{bars.innerHTML=pk.map(v=>'<i style=\"height:'+Math.max(15,Math.round(v*100))+'%\"></i>').join('')}}
-  // Show a placeholder waveform immediately so the player never looks broken
-  drawBars(Array.from({{length:60}},(_,i)=>0.2+0.5*Math.abs(Math.sin(i*0.9))+0.25*Math.random()))
-  function decode(){{if(decoded)return;decoded=true
-    const ctx=getCtx()
-    fetch(src).then(r=>r.arrayBuffer()).then(b=>ctx.decodeAudioData(b)).then(buf=>{{
-      const ch=buf.getChannelData(0),n=60,step=Math.max(1,Math.floor(ch.length/n))
-      let pk=[];for(let i=0;i<n;i++){{let s=0;for(let j=i*step;j<Math.min((i+1)*step,ch.length);j++)s+=Math.abs(ch[j]);pk.push(Math.max(0.02,s/step))}}
-      const mx=Math.max(...pk);peaks=pk.map(v=>v/mx)
-      drawBars(peaks)
-      dur=buf.duration||0;tm.textContent='0:00 / '+fmt(dur)
-    }}).catch(()=>{{}})}}
-  // Decode as soon as the player scrolls into view, so durations show without clicking
-  if('IntersectionObserver' in window){{
-    const io=new IntersectionObserver(es=>{{es.forEach(x=>{{if(x.isIntersecting){{io.disconnect();decode()}}}})}})
-    io.observe(bars)
-  }}
+  // placeholder waveform so the player never looks broken
+  bars.innerHTML=Array.from({{length:60}},(_,i)=>0.2+0.5*Math.abs(Math.sin(i*0.9))+0.25*Math.random()).map(v=>'<i style="height:'+Math.max(15,Math.round(v*100))+'%"></i>').join('')
   function seekTo(clientX){{const r=bars.getBoundingClientRect();let f=(r.width?(clientX-r.left)/r.width:0);f=Math.max(0,Math.min(1,f))
     if(au.duration&&isFinite(au.duration))au.currentTime=f*au.duration
     else if(au.seekable&&au.seekable.length)au.currentTime=f*au.seekable.end(0)}}
   let dragging=false
-  bars.addEventListener('pointerdown',e=>{{dragging=true;e.preventDefault();bars.setPointerCapture(e.pointerId);seekTo(e.clientX);if(au.paused){{getCtx().resume();decode();au.play().catch(()=>{{}})}}}})
+  bars.addEventListener('pointerdown',e=>{{dragging=true;e.preventDefault();bars.setPointerCapture(e.pointerId);seekTo(e.clientX);if(au.paused){{getCtx().resume();decodeWp(wp);au.play().catch(()=>{{}})}}}})
   bars.addEventListener('pointermove',e=>{{if(dragging)seekTo(e.clientX)}})
   bars.addEventListener('pointerup',()=>{{dragging=false}})
-  btn.onclick=()=>{{if(playing){{au.pause()}}else{{getCtx().resume();decode();au.play()}}}}
+  btn.onclick=()=>{{if(playing){{au.pause()}}else{{getCtx().resume();decodeWp(wp);au.play()}}}}
   au.onloadedmetadata=()=>{{dur=au.duration||0;tm.textContent='0:00 / '+fmt(dur)}}
   au.ontimeupdate=()=>{{tm.textContent=fmt(au.currentTime)+' / '+fmt(dur||au.duration||0)
-    const nb=peaks?peaks.length:60
+    const nb=(wp._peaks||[]).length||60
     if(au.duration){{const f=au.currentTime/au.duration;bars.querySelectorAll('i').forEach((el,i)=>el.classList.toggle('on',i/nb<=f))}}}}
   au.onended=()=>{{playing=false;btn.textContent='▶'}}
   au.onplay=()=>{{playing=true;btn.textContent='❚❚'}}
   au.onpause=()=>{{playing=false;btn.textContent='▶'}}
   au.onerror=()=>{{btn.textContent='!'}}
   sp.onclick=()=>{{si=(si+1)%speeds.length;au.playbackRate=speeds[si];sp.textContent=speeds[si]+'×'}}
-}}
+  wpObs.observe(bars)}}
 fl()
 </script>
 </body>
