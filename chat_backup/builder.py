@@ -387,32 +387,69 @@ function fl(){{const v=document.getElementById('sr').value.toLowerCase();const e
     const d=document.createElement('div');d.className='cv'+(c.id===A?' a':'')
     d.innerHTML='<span class=\"bg\">'+(c.source==='Signal'?'S':'WA')+'</span><span class=\"nn\">'+es(c.name)+'</span><span class=\"kk\">'+c.entries.length+'</span>'
     d.onclick=()=>op(c.id);el.appendChild(d)}})}}
+let rows=[],heights=[],offsets=[],msEl=null,raf=0,lastWin='',estimates=[30,46]
+function calcOff(){{offsets=new Array(rows.length+1);let a=0
+  for(let i=0;i<rows.length;i++){{offsets[i]=a;a+=heights[i]}}
+  offsets[rows.length]=a;return a}}
+function msgHtml(e){{let h=''
+  const tsep=e.ts?e.ts.substring(11,16):''
+  if(e.text)h+='<div class=\"mi\"><span class=\"t\">'+lk(es(e.text))+'</span>'+(tsep?'<span class=\"ts\">'+tsep+'</span>':'')+'</div>'
+  e.media.forEach(m=>{{const p=m.path;if(!p)return
+    if((m.contentType||'').startsWith('audio/')||p.match(/\\.(aac|m4a|opus|mp3|wav|ogg|flac)$/i))
+      h+='<div class=\"md\"><div class=\"wp\" data-src=\"'+p+'\"><button class=\"pp\">▶</button><div class=\"wv\"></div><div class=\"wd\"><span class=\"wt\">0:00</span><button class=\"sp\">1×</button></div></div></div>'
+    else if((m.contentType||'').startsWith('video/')||p.match(/\\.(mp4|mov|webm)$/i))
+      h+='<div class=\"md\"><video controls src=\"'+p+'\"></video></div>'
+    else if((m.contentType||'').startsWith('image/')||p.match(/\\.(jpg|jpeg|png|gif|webp|svg)$/i))
+      h+='<div class=\"md\"><img src=\"'+p+'\" onclick=\"event.stopPropagation();lb(this.src)\"></div>'
+    else h+='<div class=\"md\"><a href=\"'+p+'\" download style=\"color:var(--o);font-size:13px\">'+es(p.split('/').pop())+'</a></div>'}})
+  if(!e.text&&tsep)h+='<div class=\"mi\"><span class=\"ts\">'+tsep+'</span></div>'
+  if(e.reactions&&e.reactions.length){{h+='<div class=\"rx\">'
+    e.reactions.forEach(r=>{{h+='<span class=\"rc\">'+es(r.emoji)+(r.from&&r.from!=='You'?'<span class=\"rn\">'+es(r.from.split(' ')[0])+'</span>':'')+'</span>'}})
+    h+='</div>'}}
+  return h}}
+function onScroll(){{if(raf)return;raf=requestAnimationFrame(()=>{{raf=0;renderWin()}})}}
+function renderWin(){{if(!msEl)return
+  const top=msEl.scrollTop,ch=msEl.clientHeight
+  let idx=0
+  if(top>0&&offsets.length){{let lo=0,hi=rows.length-1
+    while(lo<hi){{const mid=(lo+hi)>>1
+      if(offsets[mid+1]>top)hi=mid;else lo=mid+1}}
+    idx=lo}}
+  const vis=Math.max(5,Math.ceil(ch/46)),buf=Math.max(8,Math.ceil(vis*1.5))
+  const start=Math.max(0,idx-buf),end=Math.min(rows.length-1,idx+vis+buf)
+  const key=start+'_'+end
+  if(key===lastWin)return
+  lastWin=key
+  const frag=document.createDocumentFragment()
+  for(let i=start;i<=end;i++){{const r=rows[i]
+    let dv
+    if(r.t==='day'){{dv=document.createElement('div');dv.className='dy';dv.textContent=r.l}}
+    else{{dv=document.createElement('div');dv.className='w '+(r.e.sender==='You'?'o':'i');dv.innerHTML=msgHtml(r.e)}}
+    dv.dataset.i=i;frag.appendChild(dv)}}
+  msEl.innerHTML=''
+  msEl.style.paddingTop=offsets[start]+'px'
+  msEl.style.paddingBottom=(offsets[rows.length]-offsets[end+1])+'px'
+  msEl.appendChild(frag)
+  msEl.querySelectorAll('[data-i]').forEach(dv=>{{const i=+dv.dataset.i;const h=dv.offsetHeight||heights[i];if(h)heights[i]=h}})
+  calcOff()
+  msEl.querySelectorAll('.wp').forEach(initWp)}}
 function op(id){{if(window.innerWidth<=768){{document.getElementById('sb').classList.add('c');document.getElementById('mn').classList.add('s')}}
   A=id;const c=C.find(x=>x.id===id);if(!c)return
   document.getElementById('pl').style.display='none';document.getElementById('hd').style.display='flex';document.getElementById('ms').style.display='block'
   document.getElementById('hd').innerHTML=es(c.name)+'<span class=\"src\">'+(c.source==='Signal'?'Signal':'WhatsApp')+'</span>'
-  const el=document.getElementById('ms');el.innerHTML='';let ld=''
+  const el=document.getElementById('ms')
+  rows=[];let ld=''
   c.entries.forEach(e=>{{const d=e.ts?e.ts.substring(0,10):''
-    if(d&&d!==ld){{const dv=document.createElement('div');dv.className='dy';dv.textContent=d;el.appendChild(dv);ld=d}}
-    const dv=document.createElement('div');dv.className='w '+(e.sender==='You'?'o':'i')
-    let h=''
-    const tsep=e.ts?e.ts.substring(11,16):''
-    if(e.text)h+='<div class=\"mi\"><span class=\"t\">'+lk(es(e.text))+'</span>'+(tsep?'<span class=\"ts\">'+tsep+'</span>':'')+'</div>'
-    e.media.forEach(m=>{{const p=m.path;if(!p)return
-      if((m.contentType||'').startsWith('audio/')||p.match(/\\.(aac|m4a|opus|mp3|wav|ogg|flac)$/i))
-        h+='<div class=\"md\"><div class=\"wp\" data-src=\"'+p+'\"><button class=\"pp\">▶</button><div class=\"wv\"></div><div class=\"wd\"><span class=\"wt\">0:00</span><button class=\"sp\">1×</button></div></div></div>'
-      else if((m.contentType||'').startsWith('video/')||p.match(/\\.(mp4|mov|webm)$/i))
-        h+='<div class=\"md\"><video controls src=\"'+p+'\"></video></div>'
-      else if((m.contentType||'').startsWith('image/')||p.match(/\\.(jpg|jpeg|png|gif|webp|svg)$/i))
-        h+='<div class=\"md\"><img src=\"'+p+'\" onclick=\"event.stopPropagation();lb(this.src)\"></div>'
-      else h+='<div class=\"md\"><a href=\"'+p+'\" download style=\"color:var(--o);font-size:13px\">'+es(p.split('/').pop())+'</a></div>'}})
-    if(!e.text&&tsep)h+='<div class=\"mi\"><span class=\"ts\">'+tsep+'</span></div>'
-    if(e.reactions&&e.reactions.length){{h+='<div class=\"rx\">'
-      e.reactions.forEach(r=>{{h+='<span class=\"rc\">'+es(r.emoji)+(r.from&&r.from!=='You'?'<span class=\"rn\">'+es(r.from.split(' ')[0])+'</span>':'')+'</span>'}})
-      h+='</div>'}}
-    dv.innerHTML=h;el.appendChild(dv)
-    dv.querySelectorAll('.wp').forEach(initWp)}})
-  fl();el.scrollTop=el.scrollHeight}}
+    if(d&&d!==ld){{rows.push({{t:'day',l:d}});ld=d}}
+    rows.push({{t:'msg',e:e}})}})
+  heights=rows.map(r=>r.t==='day'?estimates[0]:estimates[1])
+  lastWin='';msEl=el;calcOff()
+  if(!el.__vInit){{el.__vInit=1
+    el.addEventListener('scroll',onScroll,{{passive:true}})
+    el.addEventListener('load',e=>{{if(e.target&&e.target.tagName==='IMG'){{lastWin='';onScroll()}}}},true)}}
+  renderWin()
+  requestAnimationFrame(()=>{{el.scrollTop=el.scrollHeight}})
+  fl()}}
 const wACtx=null,wBuf=new Map()
 function getCtx(){{if(!wACtx)window.wACtx=new (window.AudioContext||window.webkitAudioContext)();return window.wACtx}}
 function initWp(wp){{const src=wp.dataset.src,btn=wp.querySelector('.pp'),bars=wp.querySelector('.wv'),tm=wp.querySelector('.wt'),sp=wp.querySelector('.sp')
