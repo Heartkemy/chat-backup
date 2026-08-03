@@ -408,13 +408,23 @@ function msgHtml(e){{let h=''
     h+='</div>'}}
   return h}}
 function onScroll(){{if(raf)return;raf=requestAnimationFrame(()=>{{raf=0;renderWin()}})}}
-function renderWin(){{if(!msEl)return
-  const top=msEl.scrollTop,ch=msEl.clientHeight
+function renderWin(forceIdx){{if(!msEl)return
+  const el=msEl,top=el.scrollTop,ch=el.clientHeight
+  // Anchor: first rendered row that reaches below the viewport top
+  let anchor=null
+  if(typeof forceIdx!=='number'){{const msRect=el.getBoundingClientRect()
+    for(const chd of el.children){{if(!chd.dataset.i)continue
+      const cr=chd.getBoundingClientRect()
+      if(cr.bottom>msRect.top){{anchor={{idx:+chd.dataset.i,delta:msRect.top-cr.top}};break}}}}}}
+  // Target index: anchor, or binary search on offsets
   let idx=0
-  if(top>0&&offsets.length){{let lo=0,hi=rows.length-1
+  if(typeof forceIdx==='number')idx=forceIdx
+  else if(anchor)idx=anchor.idx
+  else if(top>0&&offsets.length){{let lo=0,hi=rows.length-1
     while(lo<hi){{const mid=(lo+hi)>>1
       if(offsets[mid+1]>top)hi=mid;else lo=mid+1}}
     idx=lo}}
+  idx=Math.max(0,Math.min(rows.length-1,idx))
   const vis=Math.max(5,Math.ceil(ch/46)),buf=Math.max(8,Math.ceil(vis*1.5))
   const start=Math.max(0,idx-buf),end=Math.min(rows.length-1,idx+vis+buf)
   const key=start+'_'+end
@@ -426,13 +436,16 @@ function renderWin(){{if(!msEl)return
     if(r.t==='day'){{dv=document.createElement('div');dv.className='dy';dv.textContent=r.l}}
     else{{dv=document.createElement('div');dv.className='w '+(r.e.sender==='You'?'o':'i');dv.innerHTML=msgHtml(r.e)}}
     dv.dataset.i=i;frag.appendChild(dv)}}
-  msEl.innerHTML=''
-  msEl.style.paddingTop=offsets[start]+'px'
-  msEl.style.paddingBottom=(offsets[rows.length]-offsets[end+1])+'px'
-  msEl.appendChild(frag)
-  msEl.querySelectorAll('[data-i]').forEach(dv=>{{const i=+dv.dataset.i;const h=dv.offsetHeight||heights[i];if(h)heights[i]=h}})
+  el.innerHTML=''
+  el.style.paddingTop=offsets[start]+'px'
+  el.style.paddingBottom=(offsets[rows.length]-offsets[end+1])+'px'
+  el.appendChild(frag)
+  el.querySelectorAll('[data-i]').forEach(dv=>{{const i=+dv.dataset.i;const h=dv.offsetHeight||heights[i];if(h)heights[i]=h}})
   calcOff()
-  msEl.querySelectorAll('.wp').forEach(initWp)}}
+  el.querySelectorAll('.wp').forEach(initWp)
+  // Restore scroll so the anchor row stays visually put
+  if(anchor&&typeof forceIdx!=='number'){{el.scrollTop=offsets[anchor.idx]+anchor.delta
+    if(anchor.idx>=rows.length-2)el.scrollTop=el.scrollHeight}}}}
 function op(id){{if(window.innerWidth<=768){{document.getElementById('sb').classList.add('c');document.getElementById('mn').classList.add('s')}}
   A=id;const c=C.find(x=>x.id===id);if(!c)return
   document.getElementById('pl').style.display='none';document.getElementById('hd').style.display='flex';document.getElementById('ms').style.display='block'
@@ -446,9 +459,11 @@ function op(id){{if(window.innerWidth<=768){{document.getElementById('sb').class
   lastWin='';msEl=el;calcOff()
   if(!el.__vInit){{el.__vInit=1
     el.addEventListener('scroll',onScroll,{{passive:true}})
-    el.addEventListener('load',e=>{{if(e.target&&e.target.tagName==='IMG'){{lastWin='';onScroll()}}}},true)}}
-  renderWin()
-  requestAnimationFrame(()=>{{el.scrollTop=el.scrollHeight}})
+    el.addEventListener('load',e=>{{if(e.target&&e.target.tagName==='IMG'){{lastWin='';onScroll()}}}},true)
+    window.addEventListener('resize',()=>{{lastWin='';onScroll()}})}}
+  // Render the bottom window FIRST so its height is real, then jump to bottom
+  renderWin(rows.length-1)
+  el.scrollTop=el.scrollHeight
   fl()}}
 const wACtx=null,wBuf=new Map()
 function getCtx(){{if(!wACtx)window.wACtx=new (window.AudioContext||window.webkitAudioContext)();return window.wACtx}}
