@@ -349,7 +349,8 @@ html,body{{height:100%;background:var(--d);color:var(--l);font-family:'Outfit',u
 .wp{{display:flex;align-items:center;gap:8px;border-radius:10px;padding:2px 0;min-width:220px;max-width:100%}}
 .wp .pp{{width:30px;height:30px;border-radius:50%;border:none;background:var(--gs);color:#221a16;font-size:12px;cursor:pointer;flex-shrink:0;font-weight:700;transition:transform .1s}}
 .wp .pp:active{{transform:scale(.92)}}
-.wp .wv{{flex:1;display:flex;align-items:center;gap:2px;height:32px;min-width:80px;cursor:pointer}}
+.wp .wv{{flex:1;display:flex;align-items:center;gap:2px;height:32px;min-width:80px;cursor:pointer;position:relative}}
+.wp .wv::before{{content:'';position:absolute;inset:0;background:repeating-linear-gradient(90deg,rgba(255,243,227,.1) 0 2px,transparent 2px 5px);border-radius:2px}}
 .wp .wv i{{flex:1;background:rgba(255,243,227,.14);border-radius:2px;height:100%;transition:background .15s;pointer-events:none}}
 .wp .wv i.on{{background:var(--o)}}
 .wp .wd{{display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0}}
@@ -395,7 +396,7 @@ function fl(){{const v=document.getElementById('sr').value.toLowerCase();const e
 // Then fill the rest of the conversation in the background, 150 messages
 // per batch, prepending above. Native scrolling, no virtualization.
 let rows=[],msEl=null,hintEl=null,fillTok=0
-const BATCH=150
+const BATCH=80
 
 function msgHtml(e){{let h=''
   const tsep=e.ts?e.ts.substring(11,16):''
@@ -431,7 +432,7 @@ function fillOlder(next,tok){{if(tok!==fillTok)return
   const s=Math.max(0,next-BATCH)
   const prevH=el.scrollHeight
   const frag=document.createDocumentFragment()
-  for(let i=s;i<next;i++)frag.appendChild(mkRow(i))
+  for(let i=s;i<next;i++){{if(tok!==fillTok)return;frag.appendChild(mkRow(i))}}
   if(hintEl&&hintEl.nextSibling)el.insertBefore(frag,hintEl.nextSibling);else el.insertBefore(frag,el.firstChild)
   // keep the user's viewport in place while content is added above
   el.scrollTop+=el.scrollHeight-prevH
@@ -466,8 +467,9 @@ function op(id){{if(window.innerWidth<=768){{document.getElementById('sb').class
 const wACtx=null
 function getCtx(){{if(!wACtx)window.wACtx=new (window.AudioContext||window.webkitAudioContext)();return window.wACtx}}
 const fmt=s=>{{const m=Math.floor(s/60),x=Math.floor(s%60);return m+':'+String(x).padStart(2,'0')}}
-// One shared observer decodes waveforms only when they scroll into view
-const wpObs=new IntersectionObserver(es=>{{es.forEach(x=>{{if(x.isIntersecting){{wpObs.unobserve(x.target);decodeWp(x.target)}}}})}},{{rootMargin:'400px'}})
+// One shared observer initializes players only when they scroll into view
+const wpObs=new IntersectionObserver(es=>{{es.forEach(x=>{{if(x.isIntersecting){{wpObs.unobserve(x.target);initWpFull(x.target)}}}})}},{{rootMargin:'400px'}})
+function initWp(wp){{wpObs.observe(wp)}}
 function decodeWp(wp){{if(wp._decoded)return;wp._decoded=true
   const src=wp.dataset.src,ctx=getCtx()
   fetch(src).then(r=>r.arrayBuffer()).then(b=>ctx.decodeAudioData(b)).then(buf=>{{
@@ -478,12 +480,10 @@ function decodeWp(wp){{if(wp._decoded)return;wp._decoded=true
     if(bars)bars.innerHTML=wp._peaks.map(v=>'<i style="height:'+Math.max(15,Math.round(v*100))+'%"></i>').join('')
     if(tm)tm.textContent='0:00 / '+fmt(buf.duration||0)
   }}).catch(()=>{{}})}}
-function initWp(wp){{const src=wp.dataset.src,btn=wp.querySelector('.pp'),bars=wp.querySelector('.wv'),tm=wp.querySelector('.wt'),sp=wp.querySelector('.sp')
+function initWpFull(wp){{const src=wp.dataset.src,btn=wp.querySelector('.pp'),bars=wp.querySelector('.wv'),tm=wp.querySelector('.wt'),sp=wp.querySelector('.sp')
   const au=new Audio(src);au.preload='none'
   let playing=false,dur=0
   const speeds=[1,1.5,2];let si=0
-  // placeholder waveform so the player never looks broken
-  bars.innerHTML=Array.from({{length:60}},(_,i)=>0.2+0.5*Math.abs(Math.sin(i*0.9))+0.25*Math.random()).map(v=>'<i style="height:'+Math.max(15,Math.round(v*100))+'%"></i>').join('')
   function seekTo(clientX){{const r=bars.getBoundingClientRect();let f=(r.width?(clientX-r.left)/r.width:0);f=Math.max(0,Math.min(1,f))
     if(au.duration&&isFinite(au.duration))au.currentTime=f*au.duration
     else if(au.seekable&&au.seekable.length)au.currentTime=f*au.seekable.end(0)}}
@@ -501,7 +501,7 @@ function initWp(wp){{const src=wp.dataset.src,btn=wp.querySelector('.pp'),bars=w
   au.onpause=()=>{{playing=false;btn.textContent='▶'}}
   au.onerror=()=>{{btn.textContent='!'}}
   sp.onclick=()=>{{si=(si+1)%speeds.length;au.playbackRate=speeds[si];sp.textContent=speeds[si]+'×'}}
-  wpObs.observe(bars)}}
+  decodeWp(wp)}}
 fl()
 </script>
 </body>
