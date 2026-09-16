@@ -8,13 +8,13 @@
     <array>
         <string>/usr/bin/open</string>
         <string>-gj</string>
-        <string>-a</string>
-        <string>Terminal</string>
         <string>[redacted-local-path]</string>
     </array>
     <key>StartInterval</key>
     <integer>3600</integer>
     <key>RunAtLoad</key>
     <true/>
+    <key>AssociatedBundleIdentifiers</key>
+    <string>com.chatbackup.syncapp</string>
 </dict>
 </plist>

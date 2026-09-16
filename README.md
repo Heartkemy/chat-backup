@@ -20,27 +20,30 @@ The viewer server and hourly sync run through launchd:
 | Job | What it does |
 |-----|-------------|
 | `com.chatbackup.server` | Serves the viewer on `127.0.0.1:8765`. `KeepAlive` — auto-restarts on crash and at login. |
-| `com.chatbackup.sync` | Opens `cron/sync.command` in Terminal every hour and at login. |
+| `com.chatbackup.sync` | Opens the signed headless `ChatBackupSync.app` every hour and at login. |
 
-The scheduled command exports a fresh Signal message snapshot, updates Signal
-attachments incrementally, and rebuilds the archive atomically. Terminal is
-opened without being brought to the foreground and the command window closes
-when the run finishes.
+The sync app is an `LSUIElement` agent, so it runs without a Dock icon or
+Terminal window. Its stable signed bundle identity and the launch plist's
+`AssociatedBundleIdentifiers` entry keep macOS privacy grants attached to the
+same responsible process. Do not rebuild or ad-hoc re-sign the app, and never
+replace this path with a Terminal-owned scheduled command.
 
 ### One-time macOS approval
 
-The former `ChatBackupSync.app` path caused macOS App Data grants to expire
-after about one hour because its child Python process read another app's
-container. The supported path now uses Terminal's stable system identity. If
-macOS asks, allow **Terminal** to access WhatsApp/Signal app data and allow the
-`sigtop` command to read its saved Signal key. These approvals persist across
-scheduled runs.
+If macOS asks again, re-enable the existing `ChatBackupSync.app` in **System
+Settings → Privacy & Security → Full Disk Access**. The historical signed app
+expects `/opt/homebrew/bin/sigtop`; the installer maintains that path as a
+compatibility symlink to `[redacted-local-path]`.
 
-The sync resolves `sigtop` from `[redacted-local-path]`, so Homebrew changes do
-not break message ingestion. Operational logs contain counts and status only,
-not conversation names or message content.
+Run `./scripts/install-sync-agent.sh` to repair the job and
+`./scripts/check-sync-agent.sh` to verify the no-Terminal invariant. See
+[`docs/scheduled-sync.md`](docs/scheduled-sync.md) for the exact recovery path.
+
+Operational checks must use counts, hashes, timestamps, and exit state only;
+do not print archive contents.
 
 RAM/CPU: negligible — the builder runs briefly once per hour.
+
 
 ## What It Backs Up
 
