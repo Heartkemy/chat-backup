@@ -15,25 +15,32 @@ Open http://localhost:8765
 
 ## How It Runs
 
-Two launchd jobs run in the background (no terminal needed):
+The viewer server and hourly sync run through launchd:
 
 | Job | What it does |
 |-----|-------------|
 | `com.chatbackup.server` | Serves the viewer on `127.0.0.1:8765`. `KeepAlive` — auto-restarts on crash and at login. |
-| `com.chatbackup.sync` | Runs the builder every hour + at login. Launches `ChatBackupSync.app`, a headless compiled app. |
+| `com.chatbackup.sync` | Opens `cron/sync.command` in Terminal every hour and at login. |
 
-RAM/CPU: negligible — the server is a tiny Python process (~10MB RAM, ~0% CPU when idle). The builder runs ~30s per hour. Nothing to worry about.
+The scheduled command exports a fresh Signal message snapshot, updates Signal
+attachments incrementally, and rebuilds the archive atomically. Terminal is
+opened without being brought to the foreground and the command window closes
+when the run finishes.
 
-### How the sync app bypasses permissions
+### One-time macOS approval
 
-`ChatBackupSync.app` is a compiled Mach-O binary, ad-hoc signed with the
-**`group.net.whatsapp.WhatsApp.shared`** app-group entitlement — the same group
-WhatsApp's own container belongs to. macOS therefore lets it read the WhatsApp
-database without any TCC permission or prompt. It runs headless
-(`LSUIElement`), produces no windows, and needs no approval. No Terminal, no
-Full Disk Access, nothing visible. Rebuild notes: the grant is tied to the code
-signature, so re-signing the app re-triggers the (silent, group-based) check —
-it keeps working as long as the entitlement stays in the signature.
+The former `ChatBackupSync.app` path caused macOS App Data grants to expire
+after about one hour because its child Python process read another app's
+container. The supported path now uses Terminal's stable system identity. If
+macOS asks, allow **Terminal** to access WhatsApp/Signal app data and allow the
+`sigtop` command to read its saved Signal key. These approvals persist across
+scheduled runs.
+
+The sync resolves `sigtop` from `[redacted-local-path]`, so Homebrew changes do
+not break message ingestion. Operational logs contain counts and status only,
+not conversation names or message content.
+
+RAM/CPU: negligible — the builder runs briefly once per hour.
 
 ## What It Backs Up
 
@@ -123,22 +130,23 @@ Drop WhatsApp export zips in `[redacted-local-path]/` with the original naming c
 
 ## Cron / Automation
 
-An hourly sync is installed as a launchd agent:
+The hourly sync is installed as a launchd agent:
 
 ```bash
 # Install (already done):
-cp cron/com.chatbackup.plist [redacted-local-path]/
-launchctl load [redacted-local-path]/com.chatbackup.plist
+cp cron/com.chatbackup.sync.plist [redacted-local-path]/
+launchctl bootstrap gui/$(id -u) [redacted-local-path]
 
-# View logs:
+# View redacted operational logs:
 tail -f [redacted-local-path]
 
 # Uninstall:
-launchctl unload [redacted-local-path]/com.chatbackup.plist
+launchctl bootout gui/$(id -u)/com.chatbackup.sync
 ```
 
 The server at `:8080` survives restarts — the cron job checks if it's running
 and starts it if not.
+
 
 ## Design
 

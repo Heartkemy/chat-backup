@@ -7,6 +7,9 @@
     <key>ProgramArguments</key>
     <array>
         <string>/usr/bin/open</string>
+        <string>-gj</string>
+        <string>-a</string>
+        <string>Terminal</string>
         <string>[redacted-local-path]</string>
     </array>
     <key>StartInterval</key>
