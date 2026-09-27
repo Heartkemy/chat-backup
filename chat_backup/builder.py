@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Rebuild chat viewer from scratch, including phone-exported WhatsApp zips."""
 
-import os, re, shutil, sqlite3, json, zipfile, mimetypes
+import os, re, shutil, sqlite3, json, zipfile, mimetypes, hashlib, filecmp
+from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
 from html import escape
@@ -15,7 +16,7 @@ OUT_TMP = OUT + ".tmp"
 SIG_BASE = os.path.expanduser("[redacted-local-path]")
 SIG_TXT = os.path.join(SIG_BASE, "messages")
 SIG_ATT = os.path.join(SIG_BASE, "attachments")
-WA_DB = os.path.expanduser("~/Library/Group Containers/group.net.whatsapp.WhatsApp.shared/ChatStorage.sqlite")
+WA_DB = os.environ.get("CHAT_BACKUP_WA_DB", os.path.expanduser("~/Library/Group Containers/group.net.whatsapp.WhatsApp.shared/ChatStorage.sqlite"))
 WA_BASE = os.path.expanduser("~/Library/Group Containers/group.net.whatsapp.WhatsApp.shared")
 ZIP_DIR = os.path.expanduser("[redacted-local-path]")
 
@@ -275,6 +276,66 @@ for ic in iphone_convos:
     newer = [e for e in newer if (e["ts"], e["sender"], e["text"]) not in existing]
     ic["entries"].extend(newer)
 all_convos = [c for c in all_convos if c["id"] not in mac_ids_to_drop]
+
+# Merge prior exports so a source reset cannot erase messages already archived.
+# Private recovery supplements are excluded from Git.
+def message_key(entry):
+    media = tuple(sorted(os.path.basename(m.get("path", "")) for m in entry.get("media", []) if m.get("path")))
+    return entry.get("ts", ""), entry.get("sender", ""), entry.get("text", ""), media
+
+def merge_saved(saved_conversations, media_root, preserve_counts=False, media_prefix="media/"):
+    for historical in saved_conversations:
+        name, source_name = historical["name"], historical["source"]
+        # ponytail: names are the archived identity; use stable chat IDs if exports record them later.
+        current = next((c for c in all_convos if c["source"] == source_name and c["name"] == name), None)
+        if current is None:
+            cid = hashlib.sha256(f"{source_name}:{name}".encode()).hexdigest()[:16]
+            current = {"id": f"h_{cid}", "name": name, "source": source_name, "entries": []}
+            all_convos.append(current)
+        known = Counter(message_key(e) for e in current["entries"])
+        seen = Counter()
+        for entry in historical["entries"]:
+            key = message_key(entry)
+            seen[key] += 1
+            if known[key] >= (seen[key] if preserve_counts else 1):
+                continue
+            for media in entry.get("media", []):
+                relative = media.get("path")
+                if not relative:
+                    continue
+                if not relative.startswith(media_prefix) or any(part in ("", ".", "..") for part in relative.split("/")):
+                    raise ValueError("Unsafe archived media path")
+                saved_file = media_root / relative
+                if not saved_file.is_file() or saved_file.is_symlink():
+                    raise FileNotFoundError("Archived media is missing or unsafe")
+                destination = Path(OUT_TMP) / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                if destination.exists():
+                    # ponytail: fail on path reuse; namespace historic files if a real collision appears.
+                    if not filecmp.cmp(saved_file, destination, shallow=False):
+                        raise ValueError("Archived media conflicts with a new file")
+                else:
+                    shutil.copy2(saved_file, destination)
+            current["entries"].append(entry)
+            known[key] += 1
+        current["entries"].sort(key=lambda e: e.get("ts", ""))
+
+history_root = Path(__file__).resolve().parent.parent / "recovered-history"
+for supplement in sorted(history_root.glob("????-??/conversations.json")):
+    month = supplement.parent.name
+    saved = json.loads(supplement.read_text(encoding="utf-8"))
+    if saved.get("month") != month:
+        raise ValueError("Historical supplement month does not match its directory")
+    for historical in saved["conversations"]:
+        historical["source"] = "WhatsApp"
+        if any(not entry.get("ts", "").startswith(month) for entry in historical["entries"]):
+            raise ValueError("Historical supplement contains a message outside its month")
+    merge_saved(saved["conversations"], supplement.parent, media_prefix=f"media/history/{month}/")
+
+previous_index = Path(OUT) / "index.html"
+if previous_index.is_file():
+    encoded = previous_index.read_text(encoding="utf-8").split("const D=", 1)[1].split(";\nconst C=", 1)[0]
+    merge_saved(json.loads(json.loads(encoded)), Path(OUT), preserve_counts=True)
 
 # ═══════════ SORT by most recent message ═══════════
 def latest_ts(conv):

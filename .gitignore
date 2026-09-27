@@ -1,5 +1,6 @@
 data/
 signal-export/
+recovered-history/
 ChatBackupSync.app/
 *.pyc
 __pycache__/
