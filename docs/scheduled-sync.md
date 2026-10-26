@@ -11,9 +11,8 @@ An existing installation may depend on all of the following local state:
 - a locally installed `sigtop` executable; and
 - a launchd plist containing machine-specific paths.
 
-The signed app and generated archive data are intentionally ignored by Git. The
-versioned legacy launchd templates document owner-local integration, not a
-portable installation path. A fresh clone cannot create or validate the signed
+The signed app, local launchd configuration, and generated archive data are not
+distributed in this repository. A fresh clone cannot create or validate the
 app or its grants, and it must not claim otherwise. Do not rebuild, ad-hoc
 re-sign, or replace an existing signed app merely to make this repository look
 portable; that can cause macOS to request permissions again.

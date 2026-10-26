@@ -1,10 +1,17 @@
 data/
+data.tmp/
+data.old/
 signal-export/
 recovered-history/
 ChatBackupSync.app/
 .env
+.env.*
+*.zip
+*.sqlite
+*.sqlite-*
 cron/*.err
 cron/*.log
+cron/*.out
 graphify-out/
 chat_backup/graphify-out/
 *.pyc

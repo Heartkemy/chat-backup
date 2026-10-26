@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Rebuild chat viewer from scratch, including phone-exported WhatsApp zips."""
+"""Rebuild a local chat viewer from explicitly supplied exports."""
 
+import atexit
 import os, re, shutil, sqlite3, json, zipfile, mimetypes, hashlib, filecmp
 from collections import Counter
 from datetime import datetime, timedelta
@@ -27,6 +28,7 @@ MIN_MSGS = 2
 APPLE_EPOCH = datetime(2001, 1, 1)
 
 shutil.rmtree(OUT_TMP, ignore_errors=True)
+atexit.register(shutil.rmtree, OUT_TMP, ignore_errors=True)
 MEDIA = os.path.join(OUT_TMP, "media")
 os.makedirs(f"{MEDIA}/signal", exist_ok=True)
 os.makedirs(f"{MEDIA}/whatsapp", exist_ok=True)
@@ -46,11 +48,20 @@ def safe_media_filename(name):
         raise ValueError("Unsafe attachment filename")
     return candidate.name
 
+def safe_local_path(root, *parts):
+    base = Path(root).resolve()
+    candidate = base.joinpath(*parts).resolve()
+    try:
+        candidate.relative_to(base)
+    except ValueError:
+        return None
+    return candidate
+
 def find_wa_media(local_path):
-    for sub in ["", "Message/"]:
-        p = os.path.join(WA_BASE, sub, local_path)
-        if os.path.exists(p):
-            return p
+    for sub in ["", "Message"]:
+        path = safe_local_path(WA_BASE, sub, local_path)
+        if path and path.is_file():
+            return path
     return None
 
 all_convos = []
@@ -97,14 +108,18 @@ if INCLUDE_LOCAL_SOURCES and os.path.isdir(SIG_TXT):
         name = clean_name or name
         safe = re.sub(r'[^\w ._-]', '_', name)[:60]
         cid = f"s_{safe}"
-        att_src = os.path.join(SIG_ATT, name)
-        if os.path.isdir(att_src):
+        att_src = safe_local_path(SIG_ATT, name)
+        if att_src and att_src.is_dir():
             mdir = os.path.join(MEDIA, "signal", cid)
             os.makedirs(mdir, exist_ok=True)
             for af in os.listdir(att_src):
-                sf = os.path.join(att_src, af)
-                if os.path.isfile(sf):
-                    shutil.copy2(sf, os.path.join(mdir, af))
+                sf = att_src / af
+                if sf.is_file():
+                    try:
+                        safe_name = safe_media_filename(af)
+                    except ValueError:
+                        continue
+                    shutil.copy2(sf, os.path.join(mdir, safe_name))
             for e in entries:
                 for m in e["media"]:
                     an = m["name"]
@@ -162,10 +177,11 @@ if INCLUDE_LOCAL_SOURCES and os.path.exists(WA_DB):
             if lp:
                 src = find_wa_media(lp)
                 if src:
-                    dst = os.path.join(mdir, os.path.basename(lp))
+                    filename = safe_media_filename(src.name)
+                    dst = os.path.join(mdir, filename)
                     shutil.copy2(src, dst)
-                    rel = os.path.join("media", "whatsapp", cid, os.path.basename(lp))
-                    mime, _ = mimetypes.guess_type(lp)
+                    rel = os.path.join("media", "whatsapp", cid, filename)
+                    mime, _ = mimetypes.guess_type(filename)
                     media.append({"path": rel, "contentType": mime or ""})
             # Skip empty messages (no text, no media) — WhatsApp status/placeholder noise
             if not text and not media:
@@ -308,22 +324,23 @@ def merge_saved(saved_conversations, media_root, preserve_counts=False, media_pr
             known[key] += 1
         current["entries"].sort(key=lambda e: e.get("ts", ""))
 
-history_root = Path(__file__).resolve().parent.parent / "recovered-history"
-for supplement in sorted(history_root.glob("????-??/conversations.json")):
-    month = supplement.parent.name
-    saved = json.loads(supplement.read_text(encoding="utf-8"))
-    if saved.get("month") != month:
-        raise ValueError("Historical supplement month does not match its directory")
-    for historical in saved["conversations"]:
-        historical["source"] = "WhatsApp"
-        if any(not entry.get("ts", "").startswith(month) for entry in historical["entries"]):
-            raise ValueError("Historical supplement contains a message outside its month")
-    merge_saved(saved["conversations"], supplement.parent, media_prefix=f"media/history/{month}/")
+if INCLUDE_LOCAL_SOURCES:
+    history_root = Path(__file__).resolve().parent.parent / "recovered-history"
+    for supplement in sorted(history_root.glob("????-??/conversations.json")):
+        month = supplement.parent.name
+        saved = json.loads(supplement.read_text(encoding="utf-8"))
+        if saved.get("month") != month:
+            raise ValueError("Historical supplement month does not match its directory")
+        for historical in saved["conversations"]:
+            historical["source"] = "WhatsApp"
+            if any(not entry.get("ts", "").startswith(month) for entry in historical["entries"]):
+                raise ValueError("Historical supplement contains a message outside its month")
+        merge_saved(saved["conversations"], supplement.parent, media_prefix=f"media/history/{month}/")
 
-previous_index = Path(OUT) / "index.html"
-if previous_index.is_file():
-    encoded = previous_index.read_text(encoding="utf-8").split("const D=", 1)[1].split(";\nconst C=", 1)[0]
-    merge_saved(json.loads(json.loads(encoded)), Path(OUT), preserve_counts=True)
+    previous_index = Path(OUT) / "index.html"
+    if previous_index.is_file():
+        encoded = previous_index.read_text(encoding="utf-8").split("const D=", 1)[1].split(";\nconst C=", 1)[0]
+        merge_saved(json.loads(json.loads(encoded)), Path(OUT), preserve_counts=True)
 
 # ═══════════ SORT by most recent message ═══════════
 def latest_ts(conv):
@@ -344,8 +361,6 @@ html = rf"""<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Chat Archive</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Bitter:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
 <style>
 :root {{
   --d: #221a16; --l: #fff3e3; --g: oklch(99.12% 0.36 111.47);
@@ -356,12 +371,12 @@ html = rf"""<!DOCTYPE html>
   --np: 0 4px 24px rgba(0,0,0,.6);
 }}
 *{{margin:0;padding:0;box-sizing:border-box}}
-html,body{{height:100%;background:var(--d);color:var(--l);font-family:'Outfit',ui-sans-serif,sans-serif;overflow:hidden}}
+html,body{{height:100%;background:var(--d);color:var(--l);font-family:ui-sans-serif,system-ui,sans-serif;overflow:hidden}}
 .app{{display:flex;height:100vh;width:100vw}}
 #sb{{width:340px;min-width:340px;background:#1a1410;border-right:1px solid rgba(255,243,227,.08);display:flex;flex-direction:column;position:relative;z-index:2}}
 #sb-h{{padding:20px 16px 12px;border-bottom:1px solid rgba(255,243,227,.06)}}
 #sb-h h1{{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.15em;background:var(--gs);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:10px}}
-#sr{{width:100%;padding:10px 14px;border:1px solid rgba(255,243,227,.12);border-radius:12px;font-size:13px;background:rgba(255,243,227,.04);color:var(--l);outline:none;font-family:'Outfit',sans-serif;transition:border-color .2s}}
+#sr{{width:100%;padding:10px 14px;border:1px solid rgba(255,243,227,.12);border-radius:12px;font-size:13px;background:rgba(255,243,227,.04);color:var(--l);outline:none;font-family:inherit;transition:border-color .2s}}
 #sr:focus{{border-color:rgba(255,243,227,.3)}}
 #sr::placeholder{{color:rgba(255,243,227,.25)}}
 #cl{{flex:1;overflow-y:auto;padding:6px 0}}
@@ -406,7 +421,7 @@ html,body{{height:100%;background:var(--d);color:var(--l);font-family:'Outfit',u
 .wp .wv i.on{{background:var(--o)}}
 .wp .wd{{display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0}}
 .wp .wt{{font-size:9.5px;color:rgba(255,243,227,.45);font-variant-numeric:tabular-nums}}
-.wp .sp{{font-size:10px;padding:1px 6px;border-radius:6px;border:1px solid rgba(255,243,227,.25);background:transparent;color:var(--l);cursor:pointer;font-family:'Outfit',sans-serif;line-height:1.5}}
+.wp .sp{{font-size:10px;padding:1px 6px;border-radius:6px;border:1px solid rgba(255,243,227,.25);background:transparent;color:var(--l);cursor:pointer;font-family:inherit;line-height:1.5}}
 .wp .sp:hover{{border-color:var(--o);color:var(--o)}}
 .dy{{text-align:center;clear:both;padding:10px 0 14px;color:rgba(255,243,227,.2);font-size:11px;font-weight:300;letter-spacing:.03em;text-transform:uppercase}}
 .ldh{{text-align:center;padding:10px 0;color:rgba(255,243,227,.3);font-size:12px;font-weight:300;clear:both;animation:pulse 1.2s ease-in-out infinite}}

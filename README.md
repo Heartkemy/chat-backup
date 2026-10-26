@@ -66,11 +66,10 @@ can change without warning.
 ## Scheduled sync
 
 An existing owner installation may use a signed `ChatBackupSync.app` and local
-launchd configuration. The signed app and generated archive data are ignored
-and are not distributed in this repository. Legacy launchd templates are
-owner-specific, not a public setup path. Do not rebuild or re-sign the app
-casually because that can invalidate macOS privacy grants. A fresh clone must
-use the manual export path above. See [scheduled-sync limitations](docs/scheduled-sync.md).
+launchd configuration. They are not distributed in this repository. Do not
+rebuild or re-sign that app casually because that can invalidate macOS privacy
+grants. A fresh clone must use the manual export path above. See
+[scheduled-sync limitations](docs/scheduled-sync.md).
 
 ## Development and verification
 
