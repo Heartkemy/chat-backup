@@ -2,6 +2,11 @@ data/
 signal-export/
 recovered-history/
 ChatBackupSync.app/
+.env
+cron/*.err
+cron/*.log
+graphify-out/
+chat_backup/graphify-out/
 *.pyc
 __pycache__/
 .DS_Store

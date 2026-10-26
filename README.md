@@ -1,164 +1,92 @@
 # Chat Backup
 
-Exports WhatsApp messages from your Mac into a beautiful, browsable HTML viewer
-with inline voice messages, images, and video — themed after heartkemy.art.
+Experimental local exporter for chat archives. It produces a static HTML viewer
+and copied media on your machine; it is not a hosted service.
 
-Also picks up iPhone exports from WhatsApp's "Export Chat" feature.
+## Safety and status
 
-## Quick Start
+- The generated archive is unencrypted and can contain sensitive messages and
+  media. Keep it on a device you trust.
+- Serve it only through the supplied loopback command. It has no authentication
+  and must not be exposed to a LAN or the public internet.
+- The supported public workflow is a manual WhatsApp ZIP export. It uses only
+  Python's standard library and explicitly supplied local paths.
+- Existing macOS database, Signal, and scheduled-sync integrations are
+  owner-local and experimental. A fresh clone cannot reproduce the signed sync
+  app or its macOS privacy grants.
+- This current-tree cleanup does not rewrite old Git commits. Historical
+  exposure, if any, requires separate remediation.
 
-```bash
-./run.sh
-```
+## Manual export
 
-Open http://localhost:8765
-
-## How It Runs
-
-The viewer server and hourly sync run through launchd:
-
-| Job | What it does |
-|-----|-------------|
-| `com.chatbackup.server` | Serves the viewer on `127.0.0.1:8765`. `KeepAlive` — auto-restarts on crash and at login. |
-| `com.chatbackup.sync` | Opens the signed headless `ChatBackupSync.app` every hour and at login. |
-
-The sync app is an `LSUIElement` agent, so it runs without a Dock icon or
-Terminal window. Its stable signed bundle identity and the launch plist's
-`AssociatedBundleIdentifiers` entry keep macOS privacy grants attached to the
-same responsible process. Do not rebuild or ad-hoc re-sign the app, and never
-replace this path with a Terminal-owned scheduled command.
-
-### One-time macOS approval
-
-If macOS asks again, re-enable the existing `ChatBackupSync.app` in **System
-Settings → Privacy & Security → Full Disk Access**. The historical signed app
-expects `/opt/homebrew/bin/sigtop`; the installer maintains that path as a
-compatibility symlink to `[redacted-local-path]`.
-
-Run `./scripts/install-sync-agent.sh` to repair the job and
-`./scripts/check-sync-agent.sh` to verify the no-Terminal invariant. See
-[`docs/scheduled-sync.md`](docs/scheduled-sync.md) for the exact recovery path.
-
-Operational checks must use counts, hashes, timestamps, and exit state only;
-do not print archive contents.
-
-RAM/CPU: negligible — the builder runs briefly once per hour.
-
-
-## What It Backs Up
-
-| Source | Messages | Voice Messages | Automatic? |
-|--------|----------|---------------|------------|
-| WhatsApp (Mac app) | ✅ | ✅ (if cached locally) | ✅ Every hour |
-| WhatsApp (iPhone export) | ✅ | ✅ (all of them) | When you add a zip |
-| Signal Desktop | ✅ | ✅ (if cached locally) | ✅ Every hour |
-
-WhatsApp voice messages from the Mac app are limited — the app only caches audio
-files it has played locally. For a **complete backup with all voice messages**,
-use your iPhone: open a chat → tap the contact name → **Export Chat** (with media).
-Place the resulting `.zip` in `[redacted-local-path] Chat - Name.zip` and it'll be
-picked up on the next run (or run `./run.sh` manually).
-
-## How It Works
-
-1. **WhatsApp (Mac)** — reads `ChatStorage.sqlite` from the macOS Catalyst app's
-   sandbox at `~/Library/Group Containers/group.net.whatsapp.WhatsApp.shared/`.
-   The database is unencrypted SQLite with CoreData schema.
-2. **WhatsApp (iPhone)** — parses WhatsApp's standard `_chat.txt` export format
-   and extracts all media files (including `.opus` voice messages).
-3. **HTML Viewer** — generates a single-page dark-themed chat browser with:
-   - Search by conversation name
-   - [redacted-contact] messages
-   - Inline audio/video/image playback
-   - Image lightbox
-   - Gradient heartkemy theme
-
-All media files are copied into the output directory — no external dependencies
-at runtime.
-
-## Project Structure
-
-```
-chat_backup/
-├── chat_backup/
-│   └── builder.py         # Main export + HTML generation script
-├── cron/
-│   ├── com.chatbackup.plist  # launchd job (hourly)
-│   └── sync.log / sync.err  # Cron output logs
-├── data/                  # Generated output (HTML + media)
-│   ├── index.html
-│   └── media/
-├── run.sh                 # Build and serve
-├── .gitignore
-└── README.md
-```
-
-## Development
-
-### Dependencies
-
-- Python 3
-- Standard library only (no pip packages needed)
-
-### Building
+Use a WhatsApp export ZIP that you control. Do not commit it or the generated
+output.
 
 ```bash
+export CHAT_BACKUP_WA_EXPORTS="/absolute/path/to/your-export.zip"
+export CHAT_BACKUP_DIR="$PWD/data"
 python3 chat_backup/builder.py
 ```
 
-Output goes to `data/` (override with `$CHAT_BACKUP_DIR`).
+`CHAT_BACKUP_WA_EXPORTS` accepts multiple paths separated by your platform's
+path separator. This explicit manual path ignores local database and Signal
+sources unless you set `CHAT_BACKUP_INCLUDE_LOCAL=1`. The exporter refuses
+unsafe archive members and leaves the previous valid output in place if a build
+fails.
 
-### Serving Locally
-
-```bash
-cd data && python3 -m http.server 8080
-```
-
-Or just use `./run.sh` which does both.
-
-### Signal Export
-
-Signal Desktop encrypts its database key in the macOS Keychain. The keychain
-approval was granted once for the `sigtop` tool, and macOS caches it — so the
-hourly sync exports Signal automatically, silently, with no prompts.
-
-Note: Signal Desktop only syncs messages to this Mac while the app is open.
-If Signal Desktop hasn't been run in a while, the export reflects the last
-time it was open. Open Signal Desktop occasionally to keep the archive fresh.
-
-### Adding iPhone Exports
-
-Drop WhatsApp export zips in `[redacted-local-path]/` with the original naming convention:
-`WhatsApp Chat - Name.zip`. The builder finds them automatically by filename.
-
-## Cron / Automation
-
-The hourly sync is installed as a launchd agent:
+Serve the resulting archive on loopback only:
 
 ```bash
-# Install (already done):
-cp cron/com.chatbackup.sync.plist [redacted-local-path]/
-launchctl bootstrap gui/$(id -u) [redacted-local-path]
-
-# View redacted operational logs:
-tail -f [redacted-local-path]
-
-# Uninstall:
-launchctl bootout gui/$(id -u)/com.chatbackup.sync
+./scripts/serve-local.sh
+# http://127.0.0.1:8765
 ```
 
-The server at `:8080` survives restarts — the cron job checks if it's running
-and starts it if not.
+The server binds to `127.0.0.1` and does not provide encryption or access
+control. Stop it when you finish viewing the archive.
 
+## Local configuration
 
-## Design
+All inputs are local environment variables; keep values in an ignored `.env`
+file or your shell configuration, never in this repository.
 
-Themes after [heartkemy.art](https://heartkemy.art) — dark warm background
-(`#221a16`), ivory text (`#fff3e3`), alchemical gradient accents
-(purple → orange → yellow). Fonts: Outfit (UI) + Bitter (serif accents).
+| Variable | Purpose |
+| --- | --- |
+| `CHAT_BACKUP_DIR` | Generated archive directory; defaults to `data/` in this clone. |
+| `CHAT_BACKUP_WA_EXPORTS` | Explicit WhatsApp ZIP path or paths for manual export. |
+| `CHAT_BACKUP_WA_DB` / `CHAT_BACKUP_WA_BASE` | Optional macOS WhatsApp database and media location. |
+| `CHAT_BACKUP_SIGNAL_DIR` | Optional Signal text and attachment export directory. |
+| `CHAT_BACKUP_SELF_NAME` | Optional local display name rendered as `You`. |
+| `CHAT_BACKUP_INCLUDE_LOCAL` | Set to `1` only when intentionally merging owner-local sources with a manual export. |
+| `CHAT_BACKUP_PORT` | Loopback viewer port; defaults to `8765`. |
 
-## GitHub
+The macOS database and Signal paths are integration details, not a supported
+portable backup contract. Their schemas, permissions, and source availability
+can change without warning.
 
+## Scheduled sync
+
+An existing owner installation may use a signed `ChatBackupSync.app` and local
+launchd configuration. The signed app and generated archive data are ignored
+and are not distributed in this repository. Legacy launchd templates are
+owner-specific, not a public setup path. Do not rebuild or re-sign the app
+casually because that can invalidate macOS privacy grants. A fresh clone must
+use the manual export path above. See [scheduled-sync limitations](docs/scheduled-sync.md).
+
+## Development and verification
+
+Python 3 and Node.js are sufficient for the checked-in tests. They create only
+temporary synthetic fixtures; do not run tests against real archives.
+
+```bash
+node scripts/test-public-export.mjs
+python3 -c 'from pathlib import Path; compile(Path("chat_backup/builder.py").read_text(encoding="utf-8"), "chat_backup/builder.py", "exec")'
 ```
-https://github.com/iPurpl3x/chat-backup
-```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution workflow and
+[SECURITY.md](SECURITY.md) for private vulnerability reporting.
+
+## License
+
+The repository's original code is available under the [MIT License](LICENSE).
+It does not relicense chat archives, macOS applications, third-party tools, or
+their respective terms.

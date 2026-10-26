@@ -4,21 +4,24 @@
 import os, re, shutil, sqlite3, json, zipfile, mimetypes, hashlib, filecmp
 from collections import Counter
 from datetime import datetime, timedelta
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from html import escape
 
-OUT = os.path.expanduser("[redacted-local-path]")
-# Optionally override with env var
-OUT = os.environ.get("CHAT_BACKUP_DIR", OUT)
+ROOT = Path(__file__).resolve().parent.parent
+OUT = os.environ.get("CHAT_BACKUP_DIR", str(ROOT / "data"))
 # Build into a temp dir, then atomically swap so a failed run never wipes the viewer
 OUT_TMP = OUT + ".tmp"
-# Signal exports live in the project dir (Downloads is TCC-protected and gets cleaned)
-SIG_BASE = os.path.expanduser("[redacted-local-path]")
+# Signal exports default to a local ignored directory and can be overridden for tests.
+SIG_BASE = os.environ.get("CHAT_BACKUP_SIGNAL_DIR", str(ROOT / "signal-export"))
 SIG_TXT = os.path.join(SIG_BASE, "messages")
 SIG_ATT = os.path.join(SIG_BASE, "attachments")
 WA_DB = os.environ.get("CHAT_BACKUP_WA_DB", os.path.expanduser("~/Library/Group Containers/group.net.whatsapp.WhatsApp.shared/ChatStorage.sqlite"))
-WA_BASE = os.path.expanduser("~/Library/Group Containers/group.net.whatsapp.WhatsApp.shared")
-ZIP_DIR = os.path.expanduser("[redacted-local-path]")
+WA_BASE = os.environ.get("CHAT_BACKUP_WA_BASE", os.path.expanduser("~/Library/Group Containers/group.net.whatsapp.WhatsApp.shared"))
+WA_EXPORTS = [Path(value).expanduser() for value in os.environ.get("CHAT_BACKUP_WA_EXPORTS", "").split(os.pathsep) if value]
+SELF_NAME = os.environ.get("CHAT_BACKUP_SELF_NAME", "")
+# An explicit ZIP export is the shareable manual path: never mix in owner-local
+# database or Signal data unless explicitly requested.
+INCLUDE_LOCAL_SOURCES = not WA_EXPORTS or os.environ.get("CHAT_BACKUP_INCLUDE_LOCAL") == "1"
 
 MIN_MSGS = 2
 APPLE_EPOCH = datetime(2001, 1, 1)
@@ -34,6 +37,15 @@ def parse_ts(s):
         except: pass
     return None
 
+def display_name(name):
+    return "You" if SELF_NAME and name == SELF_NAME else name
+
+def safe_media_filename(name):
+    candidate = PurePosixPath(name)
+    if not name or "\\" in name or candidate.is_absolute() or len(candidate.parts) != 1 or candidate.name in (".", ".."):
+        raise ValueError("Unsafe attachment filename")
+    return candidate.name
+
 def find_wa_media(local_path):
     for sub in ["", "Message/"]:
         p = os.path.join(WA_BASE, sub, local_path)
@@ -44,7 +56,7 @@ def find_wa_media(local_path):
 all_convos = []
 
 # ═══════════ SIGNAL ═══════════
-if os.path.isdir(SIG_TXT):
+if INCLUDE_LOCAL_SOURCES and os.path.isdir(SIG_TXT):
     for fname in sorted(os.listdir(SIG_TXT)):
         if not fname.endswith(".txt"):
             continue
@@ -66,7 +78,7 @@ if os.path.isdir(SIG_TXT):
                 if m:
                     emoji, reactor = m.group(1).strip(), m.group(2).strip()
                     reactor = re.sub(r"\s*\(\+?[\d\s\-]+\)\s*$", "", reactor)
-                    if reactor == "Rafael Horvat": reactor = "You"
+                    reactor = display_name(reactor)
                     if not any(r["emoji"] == emoji and r["from"] == reactor for r in cur["reactions"]):
                         cur["reactions"].append({"emoji": emoji, "from": reactor})
             elif line.startswith("Attachment: ") and cur:
@@ -80,7 +92,7 @@ if os.path.isdir(SIG_TXT):
         # Drop empty entries (no text, no media) — e.g. call/reaction placeholders
         entries = [e for e in entries if e["text"].strip() or e["media"]]
         if len(entries) < MIN_MSGS: continue
-        # Strip phone number from conversation name, e.g. "Marianne Dotzer ([redacted-phone])"
+        # Strip a trailing phone number from a conversation name.
         clean_name = re.sub(r"\s*\(\+?[\d\s\-]+\)\s*$", "", name).strip()
         name = clean_name or name
         safe = re.sub(r'[^\w ._-]', '_', name)[:60]
@@ -106,7 +118,7 @@ if os.path.isdir(SIG_TXT):
 print(f"Signal: {len([c for c in all_convos if c['source']=='Signal'])} convos")
 
 # ═══════════ WHATSAPP (Mac) ═══════════
-if os.path.exists(WA_DB):
+if INCLUDE_LOCAL_SOURCES and os.path.exists(WA_DB):
     conn = sqlite3.connect(WA_DB)
     conn.row_factory = sqlite3.Row
     sessions = conn.execute("""
@@ -165,50 +177,28 @@ if os.path.exists(WA_DB):
 print(f"WhatsApp (Mac): {len([c for c in all_convos if c['source']=='WhatsApp'])} convos")
 
 # ═══════════ WHATSAPP (iPhone Export) ═══════════
-# Look for WhatsApp export zips in Downloads and iPhone-Backup folders
-ZIP_DIRS = [
-    os.path.expanduser("[redacted-local-path]"),
-    os.path.expanduser("[redacted-local-path]"),
-]
-ZIP_CONFIGS = [
-    ("WhatsApp Chat - Dulcesita.zip", "Dulcesita"),
-    ("WhatsApp Chat - Simon Baumann.zip", "Simon Baumann"),
-]
-
-for zip_name, chat_name in ZIP_CONFIGS:
-    zp = None
-    for zd in ZIP_DIRS:
-        candidate = os.path.join(zd, zip_name)
-        if os.path.exists(candidate):
-            zp = candidate
-            break
-    if not zp: continue
+# Export archives are explicit so local contact names and paths never become source config.
+for zp in WA_EXPORTS:
+    if not zp.is_file():
+        raise FileNotFoundError(f"WhatsApp export not found: {zp}")
+    chat_name = re.sub(r"^WhatsApp Chat - ", "", zp.stem).strip() or "WhatsApp export"
     safe = re.sub(r'[^\w ._-]', '_', chat_name)[:60]
     cid = f"wa_export_{safe}"
     mdir = os.path.join(MEDIA, "whatsapp", cid)
     os.makedirs(mdir, exist_ok=True)
     chat_content = ""
     with zipfile.ZipFile(zp) as z:
-        for name in z.namelist():
+        for info in z.infolist():
+            name = info.filename
             if name == "_chat.txt":
-                chat_content = z.read(name).decode("utf-8", errors="replace")
-            elif not name.startswith("__MACOSX") and not name.endswith("/"):
-                z.extract(name, mdir)
-                # Flatten if in subdirectory
-                src = os.path.join(mdir, name)
-                dst = os.path.join(mdir, os.path.basename(name))
-                if src != dst and os.path.exists(src):
-                    shutil.move(src, dst)
-        # Cleanup empty dirs
-        for root, dirs, files in os.walk(mdir, topdown=False):
-            for d in dirs:
-                dp = os.path.join(root, d)
-                try: os.rmdir(dp)
-                except: pass
-
-    # Remove extracted _chat.txt
-    ct_path = os.path.join(mdir, "_chat.txt")
-    if os.path.exists(ct_path): os.remove(ct_path)
+                chat_content = z.read(info).decode("utf-8", errors="replace")
+            elif not name.startswith("__MACOSX") and not info.is_dir():
+                filename = safe_media_filename(name)
+                destination = Path(mdir) / filename
+                if destination.exists():
+                    raise ValueError(f"Duplicate attachment filename: {filename}")
+                with z.open(info) as source, destination.open("xb") as target:
+                    shutil.copyfileobj(source, target)
 
     entries = []
     for line in chat_content.split("\n"):
@@ -228,7 +218,7 @@ for zip_name, chat_name in ZIP_CONFIGS:
         media = []
         att_m = re.search(r'<attached:\s*(.+?)>', msg)
         if att_m:
-            af = att_m.group(1).strip()
+            af = safe_media_filename(att_m.group(1).strip())
             ap = os.path.join(mdir, af)
             if os.path.exists(ap):
                 rel = os.path.join("media", "whatsapp", cid, af)
@@ -241,9 +231,7 @@ for zip_name, chat_name in ZIP_CONFIGS:
                 media.append({"path": rel, "contentType": mime})
             msg = f"[{af}]"
         # Handle system messages (no sender)
-        sender_clean = sender.strip()
-        if sender_clean == "Rafael Horvat":
-            sender_clean = "You"
+        sender_clean = display_name(sender.strip())
         entries.append({"ts": ts, "sender": sender_clean, "text": msg, "media": media})
 
     if entries:
@@ -347,6 +335,8 @@ all_convos.sort(key=lambda c: latest_ts(c), reverse=True)
 
 # ═══════════ HTML ═══════════
 convos_json = json.dumps(all_convos, ensure_ascii=False)
+# JSON does not escape an HTML script end tag; keep the serialized data inert.
+convos_json = convos_json.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
 
 html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -444,7 +434,8 @@ const D={json.dumps(convos_json)};
 const C=JSON.parse(D);
 let A=null;
 function es(s){{const d=document.createElement('div');d.textContent=s;return d.innerHTML}}
-function lk(s){{return s.replace(/(https?:\/\/[^\s]+)/g,'<a href="$1" target="_blank">$1</a>')}}
+function mediaUrl(path){{if(typeof path!=='string'||!path.startsWith('media/')||path.includes(String.fromCharCode(92))||path.split('/').some(part=>!part||part==='.'||part==='..'))return null;return path.split('/').map(encodeURIComponent).join('/')}}
+function lk(s){{let out='',last=0,match;const urls=/https?:\/\/[^\s<>"']+/g;while((match=urls.exec(s))){{const url=match[0];out+=es(s.slice(last,match.index))+'<a href="'+es(url)+'" target="_blank" rel="noopener noreferrer">'+es(url)+'</a>';last=match.index+url.length}}return out+es(s.slice(last))}}
 function lb(s){{document.getElementById('lbi').src=s;document.getElementById('lb').style.display='flex'}}
 function fl(){{const v=document.getElementById('sr').value.toLowerCase();const el=document.getElementById('cl');el.innerHTML=''
   C.forEach(c=>{{if(v&&!c.name.toLowerCase().includes(v))return
@@ -461,15 +452,15 @@ const BATCH=80
 
 function msgHtml(e){{let h=''
   const tsep=e.ts?e.ts.substring(11,16):''
-  if(e.text)h+='<div class="mi"><span class="t">'+lk(es(e.text))+'</span>'+(tsep?'<span class="ts">'+tsep+'</span>':'')+'</div>'
-  e.media.forEach(m=>{{const p=m.path;if(!p)return
+  if(e.text)h+='<div class="mi"><span class="t">'+lk(e.text)+'</span>'+(tsep?'<span class="ts">'+tsep+'</span>':'')+'</div>'
+  e.media.forEach(m=>{{const p=mediaUrl(m.path);if(!p)return
     if((m.contentType||'').startsWith('audio/')||p.match(/\.(aac|m4a|opus|mp3|wav|ogg|flac)$/i))
       h+='<div class="md"><div class="wp" data-src="'+p+'"><button class="pp">▶</button><div class="wv"></div><div class="wd"><span class="wt">0:00</span><button class="sp">1×</button></div></div></div>'
     else if((m.contentType||'').startsWith('video/')||p.match(/\.(mp4|mov|webm)$/i))
       h+='<div class="md"><video controls preload="none" src="'+p+'"></video></div>'
     else if((m.contentType||'').startsWith('image/')||p.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i))
       h+='<div class="md"><img loading="lazy" src="'+p+'" onclick="event.stopPropagation();lb(this.src)"></div>'
-    else h+='<div class="md"><a href="'+p+'" download style="color:var(--o);font-size:13px">'+es(p.split('/').pop())+'</a></div>'}})
+    else h+='<div class="md"><a href="'+p+'" download style="color:var(--o);font-size:13px">'+es(String(m.path).split('/').pop())+'</a></div>'}})
   if(!e.text&&tsep)h+='<div class="mi"><span class="ts">'+tsep+'</span></div>'
   if(e.reactions&&e.reactions.length){{h+='<div class="rx">'
     e.reactions.forEach(r=>{{h+='<span class="rc">'+es(r.emoji)+(r.from&&r.from!=='You'?'<span class="rn">'+es(r.from.split(' ')[0])+'</span>':'')+'</span>'}})
@@ -571,12 +562,21 @@ fl()
 with open(os.path.join(OUT_TMP, "index.html"), "w", encoding="utf-8") as f:
     f.write(html)
 
-# Atomic swap: only replace the live viewer if the build succeeded
-shutil.rmtree(OUT + ".old", ignore_errors=True)
-if os.path.isdir(OUT):
-    os.rename(OUT, OUT + ".old")
-os.rename(OUT_TMP, OUT)
-shutil.rmtree(OUT + ".old", ignore_errors=True)
+# Atomic swap: only replace the live viewer if the build succeeded.
+# Restore the prior directory if the second rename cannot complete.
+previous_output = OUT + ".old"
+shutil.rmtree(previous_output, ignore_errors=True)
+had_previous_output = os.path.isdir(OUT)
+if had_previous_output:
+    os.rename(OUT, previous_output)
+try:
+    os.rename(OUT_TMP, OUT)
+except:
+    if had_previous_output and not os.path.exists(OUT) and os.path.isdir(previous_output):
+        os.rename(previous_output, OUT)
+    raise
+else:
+    shutil.rmtree(previous_output, ignore_errors=True)
 
 # Stats
 total_msgs = sum(len(c["entries"]) for c in all_convos)
