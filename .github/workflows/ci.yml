@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Check Python syntax
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          for path in Path("chat_backup").rglob("*.py"):
+              compile(path.read_text(encoding="utf-8"), str(path), "exec")
+          PY
+      - name: Check Node syntax
+        run: |
+          for file in scripts/*.mjs; do
+            node --check "$file"
+          done
+      - name: Check shell syntax
+        run: bash -n run.sh scripts/*.sh
