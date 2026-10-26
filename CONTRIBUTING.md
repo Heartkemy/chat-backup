@@ -11,5 +11,7 @@ for file in scripts/*.mjs; do node --check "$file"; done
 bash -n run.sh scripts/*.sh
 ```
 
-Do not make CI or review instructions run backup, sync, install, or export
-operations.
+Run `python3 -m unittest discover -s tests` and
+`node scripts/test-public-export.mjs` for the temporary synthetic fixtures.
+Never run backup, sync, install, or export operations against real archives in
+CI or review checks.

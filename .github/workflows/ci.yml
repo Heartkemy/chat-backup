@@ -27,3 +27,7 @@ jobs:
           done
       - name: Check shell syntax
         run: bash -n run.sh scripts/*.sh
+      - name: Test synthetic chat analysis
+        run: python3 -m unittest discover -s tests
+      - name: Test synthetic public export
+        run: node scripts/test-public-export.mjs

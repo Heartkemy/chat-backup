@@ -17,3 +17,6 @@ chat_backup/graphify-out/
 *.pyc
 __pycache__/
 .DS_Store
+reports/
+.workbuddy-ai/
+devserver.json

@@ -128,6 +128,13 @@ try {
   assert.ok(existsSync(activeMedia), 'synthetic active attachment was not exported');
   assert.ok(!conversations.some((conversation) => ['Local source', 'Previous local archive'].includes(conversation.name)), 'manual export mixed in owner-local data');
 
+  const analysis = spawnSync('/usr/bin/python3', ['chat_backup/analyze_chat.py', '--input', index, '--chat', conversations[0].name], {
+    cwd: root, encoding: 'utf8', timeout: 10_000,
+  });
+  assert.equal(analysis.status, 0, analysis.stderr || analysis.error?.message);
+  assert.ok(analysis.stdout.includes('| All-time metric | Synthetic |'));
+  assert.ok(analysis.stdout.includes('| All playable media | 2 (100.00%) |'));
+
   const generatedScript = html.match(/<script>([\s\S]*)<\/script>/)?.[1];
   assert.ok(generatedScript, 'viewer script was not generated');
   const syntax = spawnSync(process.execPath, ['--check'], { input: generatedScript, encoding: 'utf8' });

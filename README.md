@@ -14,8 +14,8 @@ and copied media on your machine; it is not a hosted service.
 - Existing macOS database, Signal, and scheduled-sync integrations are
   owner-local and experimental. A fresh clone cannot reproduce the signed sync
   app or its macOS privacy grants.
-- This current-tree cleanup does not rewrite old Git commits. Historical
-  exposure, if any, requires separate remediation.
+- Historical copies and GitHub-retained objects can survive a cleanup. This
+  repository does not promise complete historical privacy erasure.
 
 ## Manual export
 
@@ -43,6 +43,20 @@ Serve the resulting archive on loopback only:
 
 The server binds to `127.0.0.1` and does not provide encryption or access
 control. Stop it when you finish viewing the archive.
+
+## Optional chat statistics
+
+The analyzer reads an already generated archive and prints participant counts,
+message/media totals and available voice-message durations as Markdown:
+
+```bash
+python3 chat_backup/analyze_chat.py --input data/index.html --chat "Example chat"
+```
+
+Use the exact chat name in your archive. It counts each recorded sender instead
+of assuming that the chat title is a participant. Reports contain private names
+and statistics; keep redirected output in the ignored `reports/` directory and
+do not commit or publish it. The analyzer does not contact any external service.
 
 ## Local configuration
 
