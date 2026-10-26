@@ -338,7 +338,7 @@ convos_json = json.dumps(all_convos, ensure_ascii=False)
 # JSON does not escape an HTML script end tag; keep the serialized data inert.
 convos_json = convos_json.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
 
-html = f"""<!DOCTYPE html>
+html = rf"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
